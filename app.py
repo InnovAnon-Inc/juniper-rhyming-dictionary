@@ -261,7 +261,8 @@ class SyncedNarratorState:
         for w in raw_words:
             w_clean = w.lower().strip()
             has_definition = bool(wordnet.synsets(w_clean))
-            if w_clean in self.valid_english or has_definition:
+            #if w_clean in self.valid_english or has_definition:
+            if w_clean in self.valid_english and has_definition:
                 filtered.append(w_clean)
         return list(dict.fromkeys(filtered))
 
