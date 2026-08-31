@@ -371,8 +371,8 @@ class SyncedNarratorState:
             if details['antonyms']:
                 self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(details['antonyms'])}.", "antonyms")
 
-            if details['homophones']:
-                self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
+            #if details['homophones']:
+            #    self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
 
             if details['hypernyms']:
                 self._broadcast_phrase("Hypernyms", f"Hypernyms: {', '.join(details['hypernyms'])}.", "hypernyms")
