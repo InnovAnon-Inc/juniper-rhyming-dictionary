@@ -1,6 +1,4 @@
-words within groups should be alphabetized
-groups should be shuffled before repeating
-should repeat indefinitely
-multiple definitions
-super groups -- string together meters
-examples are not necessarily using the right form of the word -- or using the word at all; prompt may be ambiguous; should use one example per definition?
+# TODO juniper-modal-metronome integration: use chord tone instead of a4; adjust farnsworth spacing to synchronize with 60 bpm
+# TODO juniper-synesthesia integration: adjust color palette based on current active chord
+# TODO better support for playing this audio stream along with juniper-modal-metronome's audio stream
+

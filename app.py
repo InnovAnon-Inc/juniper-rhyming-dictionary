@@ -1,4 +1,10 @@
 #! /usr/bin/env python3
+# TODO better tts... whisper-lite??? rhasspy???
+# TODO we would ideally narrate the accented parts of words on a downbeat, which would occur every second, on the second. see juniper-modal-metronome. we, however, must not add weird pauses or other jankiness.
+
+# TODO super group title should include target morphemes
+# TODO super group sub title should show how the super group title is being broken down (the math equation-looking part, but also add the morphemes)
+# TODO name the break down! e.g., iamb, dactyl, etc... then consider narrating the super group title
 
 import os
 import time
@@ -14,6 +20,7 @@ from nltk.corpus import wordnet, words
 import pronouncing
 from collections import defaultdict
 import random
+import itertools
 import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory
 
@@ -25,9 +32,9 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==========================================
-# 1. Phonetic Rhyme Engine
+# 1. Advanced Phonetic & Super Group Engine
 # ==========================================
-class UnifiedPhonicsEngine:
+class UnifiedPhonicsEngine: # TODO verify that this is all the vowels and that this will do big words too
     def __init__(self, max_word_length=20):
         self.max_word_length = max_word_length
         self.vowel_phonemes = {
@@ -77,7 +84,7 @@ class UnifiedPhonicsEngine:
         all_words = pronouncing.search(".*")
         for word in all_words:
             clean = self._clean_word(word)
-            if not clean or len(clean) > self.max_word_length or clean in self.word_profiles:
+            if not clean or len(clean) <= 1 or len(clean) > self.max_word_length or clean in self.word_profiles:
                 continue
 
             phones_list = pronouncing.phones_for_word(clean)
@@ -95,43 +102,68 @@ class UnifiedPhonicsEngine:
             clean_phones = re.sub(r'\d+', '', raw_phones)
             self.phone_to_words[clean_phones].append(clean)
 
-    def get_homophones(self, target_word):
-        clean = self._clean_word(target_word)
-        phones_list = pronouncing.phones_for_word(clean)
-        if not phones_list:
-            return []
-        clean_phones = re.sub(r'\d+', '', phones_list[0])
-        matches = self.phone_to_words.get(clean_phones, [])
-        return [w for w in matches if w != clean]
 
-    def get_group_for_word(self, target_word):
-        clean = self._clean_word(target_word)
-        profile = self.word_profiles.get(clean)
-        if not profile:
-            phones = pronouncing.phones_for_word(clean)
-            if phones:
-                profile = self._extract_phonetic_parts(phones[0])
-        
-        if profile:
-            stress = profile["stress"]
-            tail = profile["rhyme_tail"]
-            word_list = self.rhyme_matrix[stress].get(tail, [clean])
-            label = f"Stress {stress}, Tail {tail}"
-            return label, word_list
-        return None, None
+class SuperGroupEngine: # TODO verify that this shuffles things, and iterates all possible rhyming schemes... we might consider favoring longer schemes.
+    def __init__(self, phonics_engine):
+        self.phonics = phonics_engine
 
-    def generate_rhyme_groups(self, max_syllables=8, min_rhymes=3):
-        groups = []
-        for stress in sorted(self.rhyme_matrix.keys(), key=lambda s: (len(s), s)):
-            if len(stress) > max_syllables:
+    def _partition_stress_string(self, target_stress_str):
+        """
+        Splits a stress string like '20211' into all valid sub-stress chunks 
+        that exist in the phonics rhyme matrix.
+        """
+        results = []
+        available_stresses = set(self.phonics.rhyme_matrix.keys())
+
+        def backtrack(remaining, current_path):
+            if not remaining:
+                results.append(current_path)
+                return
+            for i in range(1, len(remaining) + 1):
+                chunk = remaining[:i]
+                if chunk in available_stresses:
+                    backtrack(remaining[i:], current_path + [chunk])
+
+        backtrack(target_stress_str, [])
+        return results
+
+    def build_super_groups_for_length(self, target_syllable_length):
+        super_groups = []
+        # Generate a unified target stress string e.g. "20211"
+        possible_stresses = [''.join(p) for p in itertools.product(['0', '1', '2'], repeat=target_syllable_length)]
+
+        for target_stress_str in possible_stresses:
+            partitions = self._partition_stress_string(target_stress_str)
+            if not partitions:
                 continue
-            for tail, word_list in self.rhyme_matrix[stress].items():
-                if len(word_list) >= min_rhymes:
-                    label = f"Stress {stress}, Tail {tail}"
-                    groups.append((label, word_list))
-        random.shuffle(groups)
-        return groups
 
+            for stress_sequence in partitions[:3]:
+                combination_groups = []
+                valid = True
+
+                for s in stress_sequence:
+                    tails = list(self.phonics.rhyme_matrix[s].keys())
+                    if not tails:
+                        valid = False
+                        break
+                    chosen_tail = random.choice(tails)
+                    words = self.phonics.rhyme_matrix[s][chosen_tail]
+                    combination_groups.append({
+                        "label": f"Pattern {s} (Tail: {chosen_tail})",
+                        "words": words
+                    })
+
+                if valid and combination_groups:
+                    # Clean presentation format: e.g., "Target 20211 (Partition: 202 + 11)"
+                    partition_str = " + ".join(stress_sequence)
+                    super_groups.append({
+                        "theme": f"Stress Sequence {target_stress_str} [{partition_str}]",
+                        "target_stress": target_stress_str,
+                        "sub_groups": combination_groups
+                    })
+
+        random.shuffle(super_groups)
+        return super_groups
 
 # ==========================================
 # 2. Morse Audio Generator
@@ -173,7 +205,6 @@ class MorseAudioGenerator:
                     audio_chunks.append(elem_space)
                 audio_chunks.append(char_space)
 
-        # Pad with silence at end
         audio_chunks.append(np.zeros(int(self.sample_rate * (silence_ms / 1000.0))))
 
         if audio_chunks:
@@ -191,6 +222,7 @@ class MorseAudioGenerator:
 class SyncedNarratorState:
     def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
         self.phonics_engine = engine_ref
+        self.super_engine = SuperGroupEngine(engine_ref)
         self.morse_gen = MorseAudioGenerator(freq=432)
         self.tts_engine = pyttsx3.init()
         self.tts_engine.setProperty('rate', speech_rate)
@@ -201,6 +233,7 @@ class SyncedNarratorState:
         self.pos_map = {'n': 'noun', 'v': 'verb', 'a': 'adjective', 's': 'adjective', 'r': 'adverb'}
         
         self.current_state = {
+            "super_group_theme": "Initializing...",
             "group_label": "Initializing...",
             "wordlist": [],
             "current_word": "",
@@ -209,20 +242,13 @@ class SyncedNarratorState:
             "audio_file": None,
             "audio_id": 0
         }
-        self.priority_queue = []
         self.lock = threading.Lock()
 
-    def _pad_wav_with_silence(self, filepath, silence_duration_sec=1.0):
-        """Reads a generated WAV and appends trailing silence so text isn't cut off."""
+    def _pad_wav_with_silence(self, filepath, silence_duration_sec=0.8):
         try:
             sr, data = wavfile.read(filepath)
             silence_samples = int(sr * silence_duration_sec)
-            
-            if data.ndim == 1:
-                silence = np.zeros(silence_samples, dtype=data.dtype)
-            else:
-                silence = np.zeros((silence_samples, data.shape[1]), dtype=data.dtype)
-
+            silence = np.zeros(silence_samples, dtype=data.dtype) if data.ndim == 1 else np.zeros((silence_samples, data.shape[1]), dtype=data.dtype)
             padded_data = np.concatenate((data, silence))
             wavfile.write(filepath, sr, padded_data)
         except Exception as e:
@@ -239,86 +265,107 @@ class SyncedNarratorState:
         filepath = os.path.join(CACHE_DIR, filename)
         try:
             with wave.open(filepath, 'r') as f:
-                frames = f.getnframes()
-                rate = f.getframerate()
-                return frames / float(rate)
+                return f.getnframes() / float(f.getframerate())
         except Exception:
             return 2.5
 
-    def _generate_ollama_example(self, word):
-        prompt = f"Write one very short, simple, kid-friendly sentence using the word '{word}'. Output only the sentence."
-        payload = json.dumps({"model": self.model_name, "prompt": prompt, "stream": False}).encode('utf-8')
+    def _generate_ollama_example_for_sense(self, word, pos, definition):
+        prompt = (
+            f"Write one clear, natural sentence using the word '{word}' as a {pos}. "
+            f"Meaning: {definition}. "
+            f"Do NOT wrap in quotes. Do NOT include phrases like 'Here is an example'. "
+            f"Return ONLY the example sentence."
+        )
+        payload = json.dumps({
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.3}
+        }).encode('utf-8')
+
+        # TODO llama.cpp??? or python ollama bindings??? llama.cpp is better
         req = urllib.request.Request(f"{self.ollama_url}/api/generate", data=payload, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=3) as response:
                 res_data = json.loads(response.read().decode('utf-8'))
-                return res_data.get("response", "").strip()
-        except Exception:
-            return None
+                cleaned = res_data.get("response", "").strip().strip('"\'')
+                if cleaned and word.lower() in cleaned.lower():
+                    return cleaned
+        except Exception as e:
+            print(e)
+
+        return None #f"The word {word} can be used when talking about {definition}."
 
     def clean_and_deduplicate_list(self, raw_words):
         filtered = []
         for w in raw_words:
             w_clean = w.lower().strip()
-            has_definition = bool(wordnet.synsets(w_clean))
-            #if w_clean in self.valid_english or has_definition:
-            if w_clean in self.valid_english and has_definition:
+            if len(w_clean) > 1 and w_clean in self.valid_english and bool(wordnet.synsets(w_clean)):
                 filtered.append(w_clean)
         return list(dict.fromkeys(filtered))
 
     def get_word_details(self, word):
         synsets = wordnet.synsets(word)
-        homophones = self.phonics_engine.get_homophones(word)
         
         if not synsets:
-            example = self._generate_ollama_example(word)
             return {
-                "pos": "word",
-                "definition": f"The word is {word}.",
-                "example": example,
-                "synonyms": [],
-                "antonyms": [],
-                "hypernyms": [],
-                "hyponyms": [],
-                "homophones": homophones
+                "word": word,
+                "senses": [{
+                    "pos": None,#"word",
+                    "definition": None,#f"The word is {word}.",
+                    "examples": [],#f"We learn about the word {word}."],
+                    "synonyms": [],
+                    "antonyms": [],
+                    "hypernyms": [],
+                    "hyponyms": []
+                }]
             }
 
-        syn = synsets[0]
-        pos_full = self.pos_map.get(syn.pos(), 'word')
-        definition = syn.definition()
-        examples = syn.examples()
-        example = examples[0] if examples else self._generate_ollama_example(word)
+        senses = []
+        for syn in synsets[:4]:
+            pos_full = self.pos_map.get(syn.pos(), 'word')
+            definition = syn.definition()
+            
+            raw_examples = syn.examples()
+            examples = [e for e in raw_examples if word.lower() in e.lower()][:2] if raw_examples else []
+            
+            if not examples:
+                examples = [self._generate_ollama_example_for_sense(word, pos_full, definition)]
 
-        synonyms, antonyms, hypernyms, hyponyms = set(), set(), set(), set()
-        for s in synsets:
-            for lemma in s.lemmas():
+            synonyms, antonyms, hypernyms, hyponyms = set(), set(), set(), set()
+            for lemma in syn.lemmas():
                 clean_lemma = lemma.name().replace('_', ' ')
                 if clean_lemma.lower() != word.lower():
                     synonyms.add(clean_lemma)
                 if lemma.antonyms():
                     for ant in lemma.antonyms():
                         antonyms.add(ant.name().replace('_', ' '))
-            for hyp in s.hypernyms():
+
+            for hyp in syn.hypernyms():
                 for lemma in hyp.lemmas():
                     hypernyms.add(lemma.name().replace('_', ' '))
-            for hyp in s.hyponyms():
+
+            for hyp in syn.hyponyms():
                 for lemma in hyp.lemmas():
                     hyponyms.add(lemma.name().replace('_', ' '))
 
+            senses.append({
+                "pos": pos_full,
+                "definition": definition,
+                "examples": examples,
+                "synonyms": list(synonyms),#[:4],
+                "antonyms": list(antonyms),#[:4],
+                "hypernyms": list(hypernyms),#[:4],
+                "hyponyms": list(hyponyms),#[:4]
+            })
+
         return {
-            "pos": pos_full,
-            "definition": definition,
-            "example": example,
-            "synonyms": list(synonyms)[:5],
-            "antonyms": list(antonyms)[:5],
-            "hypernyms": list(hypernyms)[:5],
-            "hyponyms": list(hyponyms)[:5],
-            "homophones": homophones[:5]
+            "word": word,
+            "senses": senses
         }
 
     def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
         filename = f"{file_prefix}.wav"
-        
         if is_morse:
             self.morse_gen.spell_to_morse_wav(word, filename)
         else:
@@ -331,71 +378,65 @@ class SyncedNarratorState:
             self.current_state["audio_file"] = filename
             self.current_state["audio_id"] += 1
 
-        # Sleep exact duration of audio file plus safety margin
         time.sleep(duration + 0.3)
 
-    def narrate_group(self, group_label, raw_word_list):
-        group_words = self.clean_and_deduplicate_list(raw_word_list)
-        if not group_words:
-            return
+    def narrate_super_group(self, super_group):
+        theme = super_group["theme"]
+        sub_groups = super_group["sub_groups"]
 
-        words_str = ", ".join(group_words)
-        
+        # Update state on GUI without narrating ugly math formula strings aloud
         with self.lock:
-            self.current_state["group_label"] = group_label
-            self.current_state["wordlist"] = group_words
+            self.current_state["super_group_theme"] = theme
+            self.current_state["step"] = "Starting Super Group"
 
-        for word in group_words:
-            details = self.get_word_details(word)
+        for group in sub_groups:
+            group_label = group["label"]
+            group_words = self.clean_and_deduplicate_list(group["words"])
+            
+            if not group_words:
+                continue
 
+            words_str = ", ".join(group_words)
             with self.lock:
-                self.current_state["current_word"] = word
-                self.current_state["metadata"] = details
+                self.current_state["group_label"] = group_label
+                self.current_state["wordlist"] = group_words
 
-            self._broadcast_phrase("Announcing Group List", f"Group list: {words_str}.", "group_list")
-            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
-            self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
-            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+            self._broadcast_phrase("Announcing Group List", f"Sub-group list: {words_str}.", "group_list")
 
-            if details['pos']:
-                self._broadcast_phrase("Part of Speech", f"Part of speech: {details['pos']}.", "pos")
+            for word in group_words:
+                details = self.get_word_details(word)
 
-            if details['definition']:
-                self._broadcast_phrase("Definition", f"Definition: {details['definition']}", "def")
+                with self.lock:
+                    self.current_state["current_word"] = word
+                    self.current_state["metadata"] = details
 
-            if details['example']:
-                self._broadcast_phrase("Example Sentence", f"Example: {details['example']}", "example")
+                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+                self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
-            if details['synonyms']:
-                self._broadcast_phrase("Synonyms", f"Synonyms: {', '.join(details['synonyms'])}.", "synonyms")
+                for idx, sense in enumerate(details["senses"], start=1):
+                    # FIXME this block is a bit repetitive
+                    prefix = f"Definition {idx}" if len(details["senses"]) > 1 else "Definition"
+                    self._broadcast_phrase("Part of Speech", f"{prefix} part of speech: {sense['pos']}.", "pos")
+                    self._broadcast_phrase("Definition", f"{prefix}: {sense['definition']}", "def")
+                    # 
+                    
+                    for ex in sense["examples"]:
+                        self._broadcast_phrase("Example Sentence", f"Example: {ex}", "example")
 
-            if details['antonyms']:
-                self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(details['antonyms'])}.", "antonyms")
+                    if sense['synonyms']:
+                        self._broadcast_phrase("Synonyms", f"Synonyms: {', '.join(sense['synonyms'])}.", "synonyms")
 
-            #if details['homophones']:
-            #    self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
+                    if sense['antonyms']:
+                        self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(sense['antonyms'])}.", "antonyms")
 
-            if details['hypernyms']:
-                self._broadcast_phrase("Hypernyms", f"Hypernyms: {', '.join(details['hypernyms'])}.", "hypernyms")
-
-            if details['hyponyms']:
-                self._broadcast_phrase("Hyponyms", f"Hyponyms: {', '.join(details['hyponyms'])}.", "hyponyms")
-
-            self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
-            self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
-            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
-
-    def enqueue_priority_word(self, word):
-        label, word_list = self.phonics_engine.get_group_for_word(word)
-        if label and word_list:
-            with self.lock:
-                self.priority_queue.insert(0, (label, word_list))
-            return True, label
-        return False, "Word not found in dictionary."
+                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
+                self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
+                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
 
 
 # ==========================================
-# 4. Flask Application & Background Worker
+# 4. Flask Application & Outer Loop Execution
 # ==========================================
 app = Flask(__name__)
 
@@ -403,24 +444,20 @@ phonics_engine = UnifiedPhonicsEngine(max_word_length=20)
 narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120, model_name="qwen3")
 
 def narration_worker():
-    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
-    group_idx = 0
+    current_meter_len = 1
+    max_meter_len = 8
 
     while True:
-        next_group = None
-        with narrator_state.lock:
-            if narrator_state.priority_queue:
-                next_group = narrator_state.priority_queue.pop(0)
+        super_groups = narrator_state.super_engine.build_super_groups_for_length(current_meter_len)
+        
+        if not super_groups:
+            current_meter_len = (current_meter_len % max_meter_len) + 1
+            continue
 
-        if not next_group:
-            if not rhyme_groups:
-                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
-                group_idx = 0
-            next_group = rhyme_groups[group_idx % len(rhyme_groups)]
-            group_idx += 1
+        next_super_group = random.choice(super_groups)
+        current_meter_len = (current_meter_len % max_meter_len) + 1
 
-        label, word_list = next_group
-        narrator_state.narrate_group(label, word_list)
+        narrator_state.narrate_super_group(next_super_group)
 
 
 @app.route("/")
@@ -435,18 +472,6 @@ def serve_audio(filename):
 def get_state():
     with narrator_state.lock:
         return jsonify(narrator_state.current_state)
-
-@app.route("/api/search", methods=["POST"])
-def search_word():
-    data = request.get_json() or {}
-    word = data.get("word", "").strip().lower()
-    if not word:
-        return jsonify({"status": "error", "message": "No word provided"}), 400
-
-    success, message = narrator_state.enqueue_priority_word(word)
-    if success:
-        return jsonify({"status": "success", "message": f"Queued group for word '{word}' ({message})"})
-    return jsonify({"status": "error", "message": message}), 404
 
 if __name__ == "__main__":
     t = threading.Thread(target=narration_worker, daemon=True)

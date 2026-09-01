@@ -54,31 +54,6 @@
             cursor: pointer;
         }
 
-        .search-box {
-            display: flex;
-            gap: 10px;
-        }
-
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #334155;
-            background: var(--card-bg);
-            color: var(--text-main);
-            font-size: 1rem;
-        }
-
-        button {
-            padding: 12px 20px;
-            border-radius: 8px;
-            border: none;
-            background: var(--accent-color);
-            color: #000;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
         .card {
             background: var(--card-bg);
             padding: 20px;
@@ -127,16 +102,24 @@
             font-weight: bold;
         }
 
+        .sense-block {
+            border-left: 3px solid var(--accent-color);
+            padding-left: 12px;
+            margin-bottom: 16px;
+        }
+
+        .sense-title {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
         .meta-grid {
             display: grid;
             grid-template-columns: 1fr;
-            gap: 12px;
-            margin-top: 15px;
-        }
-
-        .meta-item {
-            border-left: 3px solid var(--accent-color);
-            padding-left: 10px;
+            gap: 8px;
         }
 
         .meta-label {
@@ -146,7 +129,7 @@
         }
 
         .meta-value {
-            font-size: 1.05rem;
+            font-size: 1rem;
             margin-top: 2px;
         }
     </style>
@@ -164,13 +147,10 @@
         🔊 Tap here to Enable Synchronized Mobile Audio
     </div>
 
-    <!-- Search Form -->
+    <!-- Super Group Status Card -->
     <div class="card">
-        <form id="search-form" class="search-box">
-            <input type="text" id="word-input" placeholder="Enter a word to jump to its rhyme group..." required>
-            <button type="submit">Jump to Word</button>
-        </form>
-        <div id="feedback" style="font-size: 0.9rem; margin-top: 5px;"></div>
+        <div class="meta-label">Active Super Group Theme</div>
+        <div id="super-group-theme" style="font-size: 1.2rem; font-weight: bold; color: var(--highlight); margin-top: 4px;">Syncing...</div>
     </div>
 
     <!-- Live Status Card -->
@@ -180,47 +160,15 @@
         
         <div id="current-word" class="word-title">---</div>
 
-        <div class="meta-label">Current Group Wordlist</div>
+        <div class="meta-label" style="margin-top: 15px;">Current Group Wordlist</div>
         <div id="wordlist" class="word-list"></div>
     </div>
 
-    <!-- Detailed Metadata Card -->
+    <!-- Detailed Word Metadata Card -->
     <div class="card">
         <h3 style="margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 8px;">Word Metadata</h3>
-        
-        <div class="meta-grid">
-            <div class="meta-item">
-                <div class="meta-label">Part of Speech</div>
-                <div id="meta-pos" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Definition</div>
-                <div id="meta-def" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Example Sentence</div>
-                <div id="meta-example" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Synonyms</div>
-                <div id="meta-synonyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Antonyms</div>
-                <div id="meta-antonyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Homophones</div>
-                <div id="meta-homophones" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Broader Categories (Hypernyms)</div>
-                <div id="meta-hypernyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Specific Kinds (Hyponyms)</div>
-                <div id="meta-hyponyms" class="meta-value">-</div>
-            </div>
+        <div id="senses-container">
+            <div style="color: var(--text-muted);">Waiting for word details...</div>
         </div>
     </div>
 </div>
@@ -235,7 +183,6 @@
         isPlaying = false;
     });
 
-    // Tap to unblock mobile browser audio permissions
     document.getElementById('audio-enable-btn').addEventListener('click', () => {
         audioAllowed = true;
         player.play().catch(() => {});
@@ -247,6 +194,7 @@
             const res = await fetch('/api/state');
             const data = await res.json();
 
+            document.getElementById('super-group-theme').innerText = data.super_group_theme || 'Initializing...';
             document.getElementById('step-badge').innerText = data.step || 'Idle';
             document.getElementById('group-label').innerText = data.group_label || '';
             document.getElementById('current-word').innerText = data.current_word || '---';
@@ -261,16 +209,51 @@
                 listContainer.appendChild(chip);
             });
 
-            // Metadata fields
+            // Populate Metadata multi-senses
+            const sensesContainer = document.getElementById('senses-container');
             const meta = data.metadata || {};
-            document.getElementById('meta-pos').innerText = meta.pos || '-';
-            document.getElementById('meta-def').innerText = meta.definition || '-';
-            document.getElementById('meta-example').innerText = meta.example || '-';
-            document.getElementById('meta-synonyms').innerText = (meta.synonyms || []).join(', ') || 'None';
-            document.getElementById('meta-antonyms').innerText = (meta.antonyms || []).join(', ') || 'None';
-            document.getElementById('meta-homophones').innerText = (meta.homophones || []).join(', ') || 'None';
-            document.getElementById('meta-hypernyms').innerText = (meta.hypernyms || []).join(', ') || 'None';
-            document.getElementById('meta-hyponyms').innerText = (meta.hyponyms || []).join(', ') || 'None';
+            const senses = meta.senses || [];
+
+            if (senses.length === 0) {
+                sensesContainer.innerHTML = '<div style="color: var(--text-muted);">No metadata available.</div>';
+            } else {
+                sensesContainer.innerHTML = '';
+                senses.forEach((sense, idx) => {
+                    const senseDiv = document.createElement('div');
+                    senseDiv.className = 'sense-block';
+
+                    const title = document.createElement('div');
+                    title.className = 'sense-title';
+                    title.innerText = `Definition ${idx + 1} (${sense.pos})`;
+                    senseDiv.appendChild(title);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'meta-grid';
+
+                    const createItem = (label, val) => {
+                        const item = document.createElement('div');
+                        const lbl = document.createElement('div');
+                        lbl.className = 'meta-label';
+                        lbl.innerText = label;
+                        const v = document.createElement('div');
+                        v.className = 'meta-value';
+                        v.innerText = Array.isArray(val) ? (val.join(', ') || 'None') : (val || '-');
+                        item.appendChild(lbl);
+                        item.appendChild(v);
+                        return item;
+                    };
+
+                    grid.appendChild(createItem('Definition', sense.definition));
+                    grid.appendChild(createItem('Example Sentences', sense.examples));
+                    if (sense.synonyms && sense.synonyms.length) grid.appendChild(createItem('Synonyms', sense.synonyms));
+                    if (sense.antonyms && sense.antonyms.length) grid.appendChild(createItem('Antonyms', sense.antonyms));
+                    if (sense.hypernyms && sense.hypernyms.length) grid.appendChild(createItem('Hypernyms', sense.hypernyms));
+                    if (sense.hyponyms && sense.hyponyms.length) grid.appendChild(createItem('Hyponyms', sense.hyponyms));
+
+                    senseDiv.appendChild(grid);
+                    sensesContainer.appendChild(senseDiv);
+                });
+            }
 
             // Play audio if a new ID is received
             if (audioAllowed && data.audio_file && data.audio_id !== lastAudioId) {
@@ -287,37 +270,6 @@
 
     setInterval(updateState, 300);
     updateState();
-
-    // Form submission
-    document.getElementById('search-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const input = document.getElementById('word-input');
-        const feedback = document.getElementById('feedback');
-        const word = input.value.trim();
-
-        if (!word) return;
-
-        try {
-            const res = await fetch('/api/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ word: word })
-            });
-            const data = await res.json();
-
-            if (res.ok) {
-                feedback.style.color = '#34d399';
-                feedback.innerText = data.message;
-                input.value = '';
-            } else {
-                feedback.style.color = '#f87171';
-                feedback.innerText = data.message;
-            }
-        } catch (err) {
-            feedback.style.color = '#f87171';
-            feedback.innerText = 'Server error occurred.';
-        }
-    });
 </script>
 
 </body>
