@@ -355,6 +355,7 @@ class SyncedNarratorState:
             self._broadcast_phrase("Announcing Group List", f"Group list: {words_str}.", "group_list")
             self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
             self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
             if details['pos']:
                 self._broadcast_phrase("Part of Speech", f"Part of speech: {details['pos']}.", "pos")
@@ -382,6 +383,7 @@ class SyncedNarratorState:
 
             self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
             self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
+            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
     def enqueue_priority_word(self, word):
         label, word_list = self.phonics_engine.get_group_for_word(word)
