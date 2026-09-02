@@ -17,6 +17,8 @@ from collections import defaultdict
 import random
 import itertools
 import threading
+import math
+import cmath
 from flask import Flask, render_template, jsonify, send_from_directory
 
 # Ensure NLTK datasets are downloaded
@@ -26,40 +28,104 @@ nltk.download('words', quiet=True)
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Map standard stress patterns to classical poetic feet
+# Extended Poetic Feet Map (1 to 4 Syllables)
 POETIC_FEET_MAP = {
+    "1": "Monosyllabic",
     "01": "Iambic",
     "10": "Trochaic",
-    "001": "Anapestic",
-    "100": "Dactylic",
     "11": "Spondaic",
     "00": "Pyrrhic",
+    "001": "Anapestic",
+    "100": "Dactylic",
     "010": "Amphibrachic",
     "101": "Amphimacer",
+    "110": "Bacchic",
+    "011": "Antibacchic",
+    "111": "Molossus",
+    "000": "Tribrachic",
     "1000": "1st Paeon",
     "0100": "2nd Paeon",
     "0010": "3rd Paeon",
     "0001": "4th Paeon",
+    "1100": "Ionic a majore",
+    "0011": "Ionic a minore",
+    "1001": "Choriambic",
+    "0110": "Antispastic",
+    "0111": "1st Epitrite",
+    "1011": "2nd Epitrite",
+    "1101": "3rd Epitrite",
+    "1110": "4th Epitrite",
+    "1111": "Dispondaic",
+    "0000": "Proceleusmatic"
 }
 
+def identify_foot_name(stress_str):
+    """Maps binary/ternary stress strings to classical poetic foot names."""
+    simplified = stress_str.replace('2', '1')
+    return POETIC_FEET_MAP.get(simplified, "Custom Foot")
+
 def identify_meter_name(stress_str):
-    """Maps binary/ternary stress strings to classical poetic meter names."""
-    # Simplify secondary stress (2) to primary/unstressed where applicable for matching
+    """Maps complete stress strings to classical meter names."""
     simplified = stress_str.replace('2', '1')
     if simplified in POETIC_FEET_MAP:
         return POETIC_FEET_MAP[simplified]
-    
-    # Check if pattern repeats (e.g., 0101 -> Double Iambic / Iambic Dimeter)
-    for unit_len in [2, 3]:
+    for unit_len in [2, 3, 4]:
         if len(simplified) % unit_len == 0:
             unit = simplified[:unit_len]
             if unit in POETIC_FEET_MAP and unit * (len(simplified) // unit_len) == simplified:
                 count = len(simplified) // unit_len
-                feet_names = {1: "Monometer", 2: "Dimeter", 3: "Trimeter", 4: "Tetrameter"}
+                feet_names = {1: "Monometer", 2: "Dimeter", 3: "Trimeter", 4: "Tetrameter", 5: "Pentameter", 6: "Hexameter"}
                 return f"{POETIC_FEET_MAP[unit]} {feet_names.get(count, 'Meter')}"
-                
     return "Composite Meter"
 
+# ==========================================
+# 0. Polygon & Rhythmic Balance Mathematics
+# ==========================================
+def bjorklund(steps: int, pulses: int) -> list[int]:
+    """Euclidean algorithm for rhythm generation (Björklund)."""
+    if pulses <= 0: return [0] * steps
+    if pulses >= steps: return [1] * steps
+    pattern = [[1] for _ in range(pulses)]
+    remainder = [[0] for _ in range(steps - pulses)]
+    while len(remainder) > 1:
+        count = min(len(pattern), len(remainder))
+        for i in range(count):
+            pattern[i].extend(remainder.pop(0))
+    pattern.extend(remainder)
+    return [b for group in pattern for b in group]
+
+def analyze_polygon_balance(stress_str: str, tol: float = 1e-5):
+    """
+    Evaluates meter balance across Cyclotomic (Center of Mass) and Björklund domains.
+    """
+    N = len(stress_str)
+    if N == 0: return False, "Invalid"
+
+    # 1. Cyclotomic Zero-Sum Balance
+    weights = [0.0 if c == '0' else (1.0 if c == '1' else 1.5) for c in stress_str]
+    total_w = sum(weights)
+    is_cyclotomic = False
+    if total_w > 0:
+        center = sum(weights[i] * cmath.exp(2j * math.pi * i / N) for i in range(N)) / total_w
+        if abs(center) < tol:
+            is_cyclotomic = True
+
+    # 2. Björklund Euclidean Pattern Matching
+    bin_pat = [0 if c == '0' else 1 for c in stress_str]
+    k = sum(bin_pat)
+    is_bjorklund = False
+    if k > 0:
+        base_euc = bjorklund(N, k)
+        for shift in range(N):
+            if base_euc[shift:] + base_euc[:shift] == bin_pat:
+                is_bjorklund = True
+                break
+
+    is_balanced = is_cyclotomic or is_bjorklund
+    poly_type = "Cyclotomic & Björklund" if (is_cyclotomic and is_bjorklund) else \
+                ("Cyclotomic" if is_cyclotomic else ("Björklund Euclidean" if is_bjorklund else "Unbalanced"))
+
+    return is_balanced, poly_type
 
 # ==========================================
 # 1. Advanced Phonetic & Super Group Engine
@@ -133,6 +199,20 @@ class UnifiedPhonicsEngine:
             self.phone_to_words[clean_phones].append(clean)
 
 
+# Pre-filter balanced polygons for verse lengths 8..12 once at startup
+BALANCED_METERS_BY_LEN = defaultdict(list)
+
+def precompute_balanced_polygons():
+    for N in range(8, 13):
+        # Generate binary/ternary distributions
+        for p in itertools.product(['0', '1', '2'], repeat=N):
+            s = ''.join(p)
+            is_bal, poly_type = analyze_polygon_balance(s)
+            if is_bal:
+                BALANCED_METERS_BY_LEN[N].append((s, poly_type))
+
+precompute_balanced_polygons()
+
 class SuperGroupEngine:
     def __init__(self, phonics_engine):
         self.phonics = phonics_engine
@@ -153,39 +233,109 @@ class SuperGroupEngine:
         backtrack(target_stress_str, [])
         return results
 
-    def build_super_groups_for_length(self, target_syllable_length):
+    def build_super_groups_for_verse(self):
+        """Generates super groups targeting full poetic verse length (8-12 syllables)."""
         super_groups = []
-        possible_stresses = [''.join(p) for p in itertools.product(['0', '1', '2'], repeat=target_syllable_length)]
+#        # Verse lengths typically span 8 to 12 syllables (e.g., Iambic Pentameter/Tetrameter)
+#        verse_syllables = random.choice([8, 9, 10, 11, 12])
+#        
+#        # Candidate stress string generation
+#        possible_stresses = [''.join(p) for p in itertools.product(['0', '1', '2'], repeat=verse_syllables)]
+#        
+#        # Filter strictly for balanced polygonal meters
+#        balanced_candidates = []
+#        for s in possible_stresses:
+#            is_bal, p_type = analyze_polygon_balance(s)
+#            if is_bal:
+#                balanced_candidates.append((s, p_type))
 
-        for target_stress_str in possible_stresses:
+        verse_syllables = random.choice(list(BALANCED_METERS_BY_LEN.keys()))
+        balanced_candidates = list(BALANCED_METERS_BY_LEN[verse_syllables])
+        random.shuffle(balanced_candidates)
+
+        random.shuffle(balanced_candidates)
+
+        #for target_stress_str, poly_type in balanced_candidates[:10]:
+        for target_stress_str, poly_type in balanced_candidates:#[:10]:
             partitions = self._partition_stress_string(target_stress_str)
             if not partitions:
                 continue
 
             meter_name = identify_meter_name(target_stress_str)
 
-            for stress_sequence in partitions[:3]:
+#            # Iterate over different partition breakdowns (different combinations of poetic feet)
+#            for stress_sequence in partitions[:4]:
+#                combination_groups = []
+#                valid = True
+#                parsed_feet_details = []
+#
+#                for idx, s in enumerate(stress_sequence):
+#                    tails = list(self.phonics.rhyme_matrix[s].keys())
+#                    if not tails:
+#                        valid = False
+#                        break
+#                    chosen_tail = random.choice(tails)
+#                    words = self.phonics.rhyme_matrix[s][chosen_tail]
+#                    foot_name = identify_foot_name(s)
+#                    
+#                    foot_detail_str = f"{s} ({foot_name.lower()}, _{chosen_tail})"
+#                    parsed_feet_details.append(foot_detail_str)
+#
+#                    combination_groups.append({
+#                        "foot_index": idx,
+#                        "stress": s,
+#                        "foot_name": foot_name,
+#                        "rhyme_tail": chosen_tail,
+#                        "label": f"Foot #{idx+1}: {foot_name} [{s}] (Rhyme Tail: _{chosen_tail})",
+#                        "words": words
+#                    })
+            # Iterate over different partition breakdowns (different combinations of poetic feet)
+            #for stress_sequence in partitions[:4]:
+            for stress_sequence in partitions:#[:4]:
                 combination_groups = []
                 valid = True
+                parsed_feet_details = []
+                used_tails_in_sequence = set()  # Track used tails to prevent duplicate word lists
 
-                for s in stress_sequence:
-                    tails = list(self.phonics.rhyme_matrix[s].keys())
-                    if not tails:
+                for idx, s in enumerate(stress_sequence):
+                    # Filter out rhyme tails already assigned to earlier feet in this sequence
+                    available_tails = [t for t in self.phonics.rhyme_matrix[s].keys() if t not in used_tails_in_sequence]
+
+                    # Fallback to all tails if we run out of unique ones for this stress key
+                    if not available_tails:
+                        available_tails = list(self.phonics.rhyme_matrix[s].keys())
+
+                    if not available_tails:
                         valid = False
                         break
-                    chosen_tail = random.choice(tails)
+
+                    chosen_tail = random.choice(available_tails)
+                    used_tails_in_sequence.add(chosen_tail)
+
                     words = self.phonics.rhyme_matrix[s][chosen_tail]
+                    foot_name = identify_foot_name(s)
+
+                    foot_detail_str = f"{s} ({foot_name.lower()}, _{chosen_tail})"
+                    parsed_feet_details.append(foot_detail_str)
+
                     combination_groups.append({
-                        "label": f"Foot Pattern [{s}] (Rhyme Tail: {chosen_tail})",
+                        "foot_index": idx,
+                        "stress": s,
+                        "foot_name": foot_name,
+                        "rhyme_tail": chosen_tail,
+                        "label": f"Foot #{idx+1}: {foot_name} [{s}] (Rhyme Tail: _{chosen_tail})",
                         "words": words
                     })
 
                 if valid and combination_groups:
-                    partition_str = " + ".join(stress_sequence)
+                    detailed_breakdown = " + ".join(parsed_feet_details)
                     super_groups.append({
-                        "theme": f"{meter_name} Structure | Sequence '{target_stress_str}' [{partition_str}]",
+                        "theme_raw": f"{meter_name} ({poly_type}) | Pattern '{target_stress_str}'",
+                        "detailed_breakdown": detailed_breakdown,
+                        "parsed_feet_details": parsed_feet_details,
                         "target_stress": target_stress_str,
                         "meter_name": meter_name,
+                        "poly_type": poly_type,
                         "sub_groups": combination_groups
                     })
 
@@ -197,15 +347,15 @@ class SuperGroupEngine:
 # 2. Lightweight & Fast TTS Engine Wrapper
 # ==========================================
 class FastTTSEngine:
-    """Supports Piper TTS binary fallbacking to pyttsx3 for light CPU footprints."""
     def __init__(self, speech_rate=120):
-        self.piper_path = "/usr/local/bin/piper" # Adjust path to your piper installation
+        self.piper_path = "/usr/local/bin/piper"
         self.piper_model = "en_US-lessac-medium.onnx"
         self.use_piper = os.path.exists(self.piper_path) and os.path.exists(self.piper_model)
         
         if not self.use_piper:
             self.pyttsx_engine = pyttsx3.init()
             self.pyttsx_engine.setProperty('rate', speech_rate)
+            # TODO can the pitch be adjusted also? centering more around A3?
 
     def generate_wav(self, text, filepath):
         if self.use_piper:
@@ -271,20 +421,19 @@ class MorseAudioGenerator:
 # 4. Synchronized Audio State Manager
 # ==========================================
 class SyncedNarratorState:
-    def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
+    def __init__(self, engine_ref, speech_rate=120):
         self.phonics_engine = engine_ref
         self.super_engine = SuperGroupEngine(engine_ref)
         self.morse_gen = MorseAudioGenerator(freq=432)
         self.tts = FastTTSEngine(speech_rate=speech_rate)
         
-        self.ollama_url = ollama_url
-        self.model_name = model_name
         self.valid_english = set(words.words())
         self.pos_map = {'n': 'noun', 'v': 'verb', 'a': 'adjective', 's': 'adjective', 'r': 'adverb'}
         
         self.current_state = {
             "super_group_theme": "Initializing...",
             "group_label": "Initializing...",
+            "active_foot_index": 0,
             "wordlist": [],
             "current_word": "",
             "step": "Idle",
@@ -294,7 +443,7 @@ class SyncedNarratorState:
         }
         self.lock = threading.Lock()
 
-    def _pad_wav_with_silence(self, filepath, silence_duration_sec=0.8):
+    def _pad_wav_with_silence(self, filepath, silence_duration_sec=0.8): # TODO maybe make it 0.8 give or take, so as to align with 60 bpm
         try:
             sr, data = wavfile.read(filepath)
             silence_samples = int(sr * silence_duration_sec)
@@ -315,7 +464,7 @@ class SyncedNarratorState:
         try:
             with wave.open(filepath, 'r') as f:
                 return f.getnframes() / float(f.getframerate())
-        except Exception:
+        except Exception: # TODO don't silently eat errors
             return 2.5
 
     def clean_and_deduplicate_list(self, raw_words):
@@ -371,17 +520,24 @@ class SyncedNarratorState:
             self.current_state["audio_file"] = filename
             self.current_state["audio_id"] += 1
 
-        time.sleep(duration + 0.3)
+        time.sleep(duration + 0.3) # TODO can this also be fudged to help align with 60 bpm ?
 
     def narrate_super_group(self, super_group):
-        theme = super_group["theme"]
+        theme_raw = super_group["theme_raw"]
+        feet_details = super_group["parsed_feet_details"]
         sub_groups = super_group["sub_groups"]
 
-        with self.lock:
-            self.current_state["super_group_theme"] = theme
-            self.current_state["step"] = "Starting Super Group"
+        for idx, group in enumerate(sub_groups):
+            # Format title with current position highlighted via brackets/asterisks
+            formatted_breakdown = []
+            for f_idx, foot_str in enumerate(feet_details):
+                if f_idx == idx:
+                    formatted_breakdown.append(f"👉 [{foot_str}] 👈")
+                else:
+                    formatted_breakdown.append(foot_str)
+            
+            full_theme_title = f"{theme_raw} | Breakdown: [{' + '.join(formatted_breakdown)}]"
 
-        for group in sub_groups:
             group_label = group["label"]
             group_words = self.clean_and_deduplicate_list(group["words"])
             
@@ -390,12 +546,16 @@ class SyncedNarratorState:
 
             words_str = ", ".join(group_words)
             with self.lock:
+                self.current_state["super_group_theme"] = full_theme_title
                 self.current_state["group_label"] = group_label
+                self.current_state["active_foot_index"] = idx
                 self.current_state["wordlist"] = group_words
+                self.current_state["step"] = f"Foot {idx+1}/{len(sub_groups)}"
 
             self._broadcast_phrase("Announcing Group List", f"Sub-group rhyming list: {words_str}.", "group_list")
 
-            for word in group_words:
+            #for word in group_words[:3]:  # Cycle top matching words per foot group
+            for word in group_words:  # Cycle top matching words per foot group
                 details = self.get_word_details(word)
 
                 with self.lock:
@@ -404,9 +564,9 @@ class SyncedNarratorState:
 
                 self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
                 self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
-                # Combined concise narration (eliminates separate POS/Def repeating calls)
-                for idx, sense in enumerate(details["senses"], start=1):
+                for idx_s, sense in enumerate(details["senses"], start=1):
                     concise_phrase = f"As a {sense['pos']}: {sense['definition']}."
                     self._broadcast_phrase("Definition", concise_phrase, "def")
                     
@@ -414,10 +574,12 @@ class SyncedNarratorState:
                         self._broadcast_phrase("Example Sentence", f"Example: {ex}", "example")
 
                 self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
+                self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
 
 
 # ==========================================
-# 5. Flask Application & Outer Loop Execution
+# 5. Flask Application & Worker Execution
 # ==========================================
 app = Flask(__name__)
 
@@ -425,20 +587,14 @@ phonics_engine = UnifiedPhonicsEngine(max_word_length=20)
 narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120)
 
 def narration_worker():
-    current_meter_len = 1
-    max_meter_len = 6
-
     while True:
-        super_groups = narrator_state.super_engine.build_super_groups_for_length(current_meter_len)
-        
+        super_groups = narrator_state.super_engine.build_super_groups_for_verse()
         if not super_groups:
-            current_meter_len = (current_meter_len % max_meter_len) + 1
+            time.sleep(1)
             continue
 
-        next_super_group = random.choice(super_groups)
-        current_meter_len = (current_meter_len % max_meter_len) + 1
-
-        narrator_state.narrate_super_group(next_super_group)
+        for sg in super_groups:
+            narrator_state.narrate_super_group(sg)
 
 
 @app.route("/")
