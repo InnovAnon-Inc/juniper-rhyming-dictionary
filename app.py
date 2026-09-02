@@ -1,10 +1,4 @@
 #! /usr/bin/env python3
-# TODO better tts... whisper-lite??? rhasspy???
-# TODO we would ideally narrate the accented parts of words on a downbeat, which would occur every second, on the second. see juniper-modal-metronome. we, however, must not add weird pauses or other jankiness.
-
-# TODO super group title should include target morphemes
-# TODO super group sub title should show how the super group title is being broken down (the math equation-looking part, but also add the morphemes)
-# TODO name the break down! e.g., iamb, dactyl, etc... then consider narrating the super group title
 
 import os
 import time
@@ -13,6 +7,7 @@ import wave
 import numpy as np
 import json
 import urllib.request
+import subprocess
 from scipy.io import wavfile
 import pyttsx3
 import nltk
@@ -22,7 +17,7 @@ from collections import defaultdict
 import random
 import itertools
 import threading
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, jsonify, send_from_directory
 
 # Ensure NLTK datasets are downloaded
 nltk.download('wordnet', quiet=True)
@@ -31,10 +26,45 @@ nltk.download('words', quiet=True)
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# Map standard stress patterns to classical poetic feet
+POETIC_FEET_MAP = {
+    "01": "Iambic",
+    "10": "Trochaic",
+    "001": "Anapestic",
+    "100": "Dactylic",
+    "11": "Spondaic",
+    "00": "Pyrrhic",
+    "010": "Amphibrachic",
+    "101": "Amphimacer",
+    "1000": "1st Paeon",
+    "0100": "2nd Paeon",
+    "0010": "3rd Paeon",
+    "0001": "4th Paeon",
+}
+
+def identify_meter_name(stress_str):
+    """Maps binary/ternary stress strings to classical poetic meter names."""
+    # Simplify secondary stress (2) to primary/unstressed where applicable for matching
+    simplified = stress_str.replace('2', '1')
+    if simplified in POETIC_FEET_MAP:
+        return POETIC_FEET_MAP[simplified]
+    
+    # Check if pattern repeats (e.g., 0101 -> Double Iambic / Iambic Dimeter)
+    for unit_len in [2, 3]:
+        if len(simplified) % unit_len == 0:
+            unit = simplified[:unit_len]
+            if unit in POETIC_FEET_MAP and unit * (len(simplified) // unit_len) == simplified:
+                count = len(simplified) // unit_len
+                feet_names = {1: "Monometer", 2: "Dimeter", 3: "Trimeter", 4: "Tetrameter"}
+                return f"{POETIC_FEET_MAP[unit]} {feet_names.get(count, 'Meter')}"
+                
+    return "Composite Meter"
+
+
 # ==========================================
 # 1. Advanced Phonetic & Super Group Engine
 # ==========================================
-class UnifiedPhonicsEngine: # TODO verify that this is all the vowels and that this will do big words too
+class UnifiedPhonicsEngine:
     def __init__(self, max_word_length=20):
         self.max_word_length = max_word_length
         self.vowel_phonemes = {
@@ -103,15 +133,11 @@ class UnifiedPhonicsEngine: # TODO verify that this is all the vowels and that t
             self.phone_to_words[clean_phones].append(clean)
 
 
-class SuperGroupEngine: # TODO verify that this shuffles things, and iterates all possible rhyming schemes... we might consider favoring longer schemes.
+class SuperGroupEngine:
     def __init__(self, phonics_engine):
         self.phonics = phonics_engine
 
     def _partition_stress_string(self, target_stress_str):
-        """
-        Splits a stress string like '20211' into all valid sub-stress chunks 
-        that exist in the phonics rhyme matrix.
-        """
         results = []
         available_stresses = set(self.phonics.rhyme_matrix.keys())
 
@@ -129,13 +155,14 @@ class SuperGroupEngine: # TODO verify that this shuffles things, and iterates al
 
     def build_super_groups_for_length(self, target_syllable_length):
         super_groups = []
-        # Generate a unified target stress string e.g. "20211"
         possible_stresses = [''.join(p) for p in itertools.product(['0', '1', '2'], repeat=target_syllable_length)]
 
         for target_stress_str in possible_stresses:
             partitions = self._partition_stress_string(target_stress_str)
             if not partitions:
                 continue
+
+            meter_name = identify_meter_name(target_stress_str)
 
             for stress_sequence in partitions[:3]:
                 combination_groups = []
@@ -149,24 +176,48 @@ class SuperGroupEngine: # TODO verify that this shuffles things, and iterates al
                     chosen_tail = random.choice(tails)
                     words = self.phonics.rhyme_matrix[s][chosen_tail]
                     combination_groups.append({
-                        "label": f"Pattern {s} (Tail: {chosen_tail})",
+                        "label": f"Foot Pattern [{s}] (Rhyme Tail: {chosen_tail})",
                         "words": words
                     })
 
                 if valid and combination_groups:
-                    # Clean presentation format: e.g., "Target 20211 (Partition: 202 + 11)"
                     partition_str = " + ".join(stress_sequence)
                     super_groups.append({
-                        "theme": f"Stress Sequence {target_stress_str} [{partition_str}]",
+                        "theme": f"{meter_name} Structure | Sequence '{target_stress_str}' [{partition_str}]",
                         "target_stress": target_stress_str,
+                        "meter_name": meter_name,
                         "sub_groups": combination_groups
                     })
 
         random.shuffle(super_groups)
         return super_groups
 
+
 # ==========================================
-# 2. Morse Audio Generator
+# 2. Lightweight & Fast TTS Engine Wrapper
+# ==========================================
+class FastTTSEngine:
+    """Supports Piper TTS binary fallbacking to pyttsx3 for light CPU footprints."""
+    def __init__(self, speech_rate=120):
+        self.piper_path = "/usr/local/bin/piper" # Adjust path to your piper installation
+        self.piper_model = "en_US-lessac-medium.onnx"
+        self.use_piper = os.path.exists(self.piper_path) and os.path.exists(self.piper_model)
+        
+        if not self.use_piper:
+            self.pyttsx_engine = pyttsx3.init()
+            self.pyttsx_engine.setProperty('rate', speech_rate)
+
+    def generate_wav(self, text, filepath):
+        if self.use_piper:
+            cmd = f'echo "{text}" | {self.piper_path} --model {self.piper_model} --output_file {filepath}'
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            self.pyttsx_engine.save_to_file(text, filepath)
+            self.pyttsx_engine.runAndWait()
+
+
+# ==========================================
+# 3. Morse Code Audio Synthesizer
 # ==========================================
 class MorseAudioGenerator:
     def __init__(self, freq=432, sample_rate=44100):
@@ -217,15 +268,14 @@ class MorseAudioGenerator:
 
 
 # ==========================================
-# 3. Synchronized Audio State Manager
+# 4. Synchronized Audio State Manager
 # ==========================================
 class SyncedNarratorState:
     def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
         self.phonics_engine = engine_ref
         self.super_engine = SuperGroupEngine(engine_ref)
         self.morse_gen = MorseAudioGenerator(freq=432)
-        self.tts_engine = pyttsx3.init()
-        self.tts_engine.setProperty('rate', speech_rate)
+        self.tts = FastTTSEngine(speech_rate=speech_rate)
         
         self.ollama_url = ollama_url
         self.model_name = model_name
@@ -256,8 +306,7 @@ class SyncedNarratorState:
 
     def _generate_tts_wav(self, text, filename):
         filepath = os.path.join(CACHE_DIR, filename)
-        self.tts_engine.save_to_file(text, filepath)
-        self.tts_engine.runAndWait()
+        self.tts.generate_wav(text, filepath)
         self._pad_wav_with_silence(filepath, silence_duration_sec=0.8)
         return filename
 
@@ -269,33 +318,6 @@ class SyncedNarratorState:
         except Exception:
             return 2.5
 
-    def _generate_ollama_example_for_sense(self, word, pos, definition):
-        prompt = (
-            f"Write one clear, natural sentence using the word '{word}' as a {pos}. "
-            f"Meaning: {definition}. "
-            f"Do NOT wrap in quotes. Do NOT include phrases like 'Here is an example'. "
-            f"Return ONLY the example sentence."
-        )
-        payload = json.dumps({
-            "model": self.model_name,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.3}
-        }).encode('utf-8')
-
-        # TODO llama.cpp??? or python ollama bindings??? llama.cpp is better
-        req = urllib.request.Request(f"{self.ollama_url}/api/generate", data=payload, headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=3) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                cleaned = res_data.get("response", "").strip().strip('"\'')
-                if cleaned and word.lower() in cleaned.lower():
-                    return cleaned
-        except Exception as e:
-            print(e)
-
-        return None #f"The word {word} can be used when talking about {definition}."
-
     def clean_and_deduplicate_list(self, raw_words):
         filtered = []
         for w in raw_words:
@@ -306,33 +328,17 @@ class SyncedNarratorState:
 
     def get_word_details(self, word):
         synsets = wordnet.synsets(word)
-        
         if not synsets:
-            return {
-                "word": word,
-                "senses": [{
-                    "pos": None,#"word",
-                    "definition": None,#f"The word is {word}.",
-                    "examples": [],#f"We learn about the word {word}."],
-                    "synonyms": [],
-                    "antonyms": [],
-                    "hypernyms": [],
-                    "hyponyms": []
-                }]
-            }
+            return {"word": word, "senses": []}
 
         senses = []
-        for syn in synsets[:4]:
+        for syn in synsets[:3]:
             pos_full = self.pos_map.get(syn.pos(), 'word')
             definition = syn.definition()
-            
             raw_examples = syn.examples()
-            examples = [e for e in raw_examples if word.lower() in e.lower()][:2] if raw_examples else []
-            
-            if not examples:
-                examples = [self._generate_ollama_example_for_sense(word, pos_full, definition)]
+            examples = [e for e in raw_examples if word.lower() in e.lower()][:1]
 
-            synonyms, antonyms, hypernyms, hyponyms = set(), set(), set(), set()
+            synonyms, antonyms = set(), set()
             for lemma in syn.lemmas():
                 clean_lemma = lemma.name().replace('_', ' ')
                 if clean_lemma.lower() != word.lower():
@@ -341,28 +347,15 @@ class SyncedNarratorState:
                     for ant in lemma.antonyms():
                         antonyms.add(ant.name().replace('_', ' '))
 
-            for hyp in syn.hypernyms():
-                for lemma in hyp.lemmas():
-                    hypernyms.add(lemma.name().replace('_', ' '))
-
-            for hyp in syn.hyponyms():
-                for lemma in hyp.lemmas():
-                    hyponyms.add(lemma.name().replace('_', ' '))
-
             senses.append({
                 "pos": pos_full,
                 "definition": definition,
                 "examples": examples,
-                "synonyms": list(synonyms),#[:4],
-                "antonyms": list(antonyms),#[:4],
-                "hypernyms": list(hypernyms),#[:4],
-                "hyponyms": list(hyponyms),#[:4]
+                "synonyms": list(synonyms)[:3],
+                "antonyms": list(antonyms)[:3]
             })
 
-        return {
-            "word": word,
-            "senses": senses
-        }
+        return {"word": word, "senses": senses}
 
     def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
         filename = f"{file_prefix}.wav"
@@ -384,7 +377,6 @@ class SyncedNarratorState:
         theme = super_group["theme"]
         sub_groups = super_group["sub_groups"]
 
-        # Update state on GUI without narrating ugly math formula strings aloud
         with self.lock:
             self.current_state["super_group_theme"] = theme
             self.current_state["step"] = "Starting Super Group"
@@ -401,7 +393,7 @@ class SyncedNarratorState:
                 self.current_state["group_label"] = group_label
                 self.current_state["wordlist"] = group_words
 
-            self._broadcast_phrase("Announcing Group List", f"Sub-group list: {words_str}.", "group_list")
+            self._broadcast_phrase("Announcing Group List", f"Sub-group rhyming list: {words_str}.", "group_list")
 
             for word in group_words:
                 details = self.get_word_details(word)
@@ -412,40 +404,29 @@ class SyncedNarratorState:
 
                 self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
                 self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
-                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
+                # Combined concise narration (eliminates separate POS/Def repeating calls)
                 for idx, sense in enumerate(details["senses"], start=1):
-                    # FIXME this block is a bit repetitive
-                    prefix = f"Definition {idx}" if len(details["senses"]) > 1 else "Definition"
-                    self._broadcast_phrase("Part of Speech", f"{prefix} part of speech: {sense['pos']}.", "pos")
-                    self._broadcast_phrase("Definition", f"{prefix}: {sense['definition']}", "def")
-                    # 
+                    concise_phrase = f"As a {sense['pos']}: {sense['definition']}."
+                    self._broadcast_phrase("Definition", concise_phrase, "def")
                     
                     for ex in sense["examples"]:
                         self._broadcast_phrase("Example Sentence", f"Example: {ex}", "example")
 
-                    if sense['synonyms']:
-                        self._broadcast_phrase("Synonyms", f"Synonyms: {', '.join(sense['synonyms'])}.", "synonyms")
-
-                    if sense['antonyms']:
-                        self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(sense['antonyms'])}.", "antonyms")
-
-                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
-                self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
                 self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
 
 
 # ==========================================
-# 4. Flask Application & Outer Loop Execution
+# 5. Flask Application & Outer Loop Execution
 # ==========================================
 app = Flask(__name__)
 
 phonics_engine = UnifiedPhonicsEngine(max_word_length=20)
-narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120, model_name="qwen3")
+narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120)
 
 def narration_worker():
     current_meter_len = 1
-    max_meter_len = 8
+    max_meter_len = 6
 
     while True:
         super_groups = narrator_state.super_engine.build_super_groups_for_length(current_meter_len)
