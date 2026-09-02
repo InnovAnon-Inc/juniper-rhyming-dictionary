@@ -25,6 +25,58 @@ CACHE_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 # ==========================================
+# Metrical Foot Prosodic Dictionary
+# ==========================================
+# Mapping binary/numeric stress strings ('1' = stressed, '0'/'2' = unstressed)
+# to classical Greek/Latin metrical feet.
+METRICAL_FEET = {
+    # --- Disyllables (2 Syllables) ---
+    "01": "Iamb",
+    "10": "Trochee",
+    "11": "Spondee",
+    "00": "Pyrrhic",
+
+    # --- Trisyllables (3 Syllables) ---
+    "100": "Dactyl",
+    "001": "Anapest",
+    "010": "Amphibrach",
+    "101": "Amphimacer (Cretic)",
+    "110": "Antibacchius",
+    "011": "Bacchius",
+    "111": "Molossus",
+    "000": "Tribrach",
+
+    # --- Tetrasyllables (4 Syllables) ---
+    "1000": "Primus Paeon",
+    "0100": "Secundus Paeon",
+    "0010": "Tertius Paeon",
+    "0001": "Quartus Paeon",
+    "1100": "Major Ionic (Double Trochee)",
+    "0011": "Minor Ionic (Double Iamb)",
+    "1001": "Choriamb",
+    "0110": "Antispast",
+    "1010": "Ditrochee",
+    "0101": "Diiamb",
+    "1110": "Epitrite I",
+    "1101": "Epitrite II",
+    "1011": "Epitrite III",
+    "0111": "Epitrite IV",
+    "1111": "Dispondee",
+    "0000": "Proceleusmatic",
+
+    # --- Common Pentasyllables (5 Syllables) ---
+    "01010": "Pentameter Iambic Catalectic",
+    "10101": "Pentameter Trochaic Catalectic",
+    "100100": "Hexapody Dactylic Catalectic"
+}
+
+def identify_metrical_foot(stress_pattern):
+    """Normalize stress string ('0', '1', '2') to binary ('0', '1') and lookup foot name."""
+    # Convert secondary stress ('2') to unstressed ('0') for foot matching
+    normalized = "".join(['1' if c == '1' else '0' for c in stress_pattern])
+    return METRICAL_FEET.get(normalized, None)
+
+# ==========================================
 # 1. Phonetic Rhyme Engine
 # ==========================================
 class UnifiedPhonicsEngine:
@@ -159,7 +211,8 @@ class MorseAudioGenerator:
             tone[-fade_len:] *= np.linspace(1, 0, fade_len)
         return tone
 
-    def spell_to_morse_wav(self, word, filename, dot_ms=60, silence_ms=800):
+    #def spell_to_morse_wav(self, word, filename, dot_ms=60, silence_ms=800):
+    def spell_to_morse_wav(self, word, filename, dot_ms=100, silence_ms=1000):
         dash_ms = dot_ms * 3
         elem_space = np.zeros(int(self.sample_rate * (dot_ms / 1000.0)))
         char_space = np.zeros(int(self.sample_rate * (dash_ms / 1000.0)))
@@ -316,9 +369,26 @@ class SyncedNarratorState:
             "homophones": homophones[:5]
         }
 
+#    def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
+#        filename = f"{file_prefix}.wav"
+#        
+#        if is_morse:
+#            self.morse_gen.spell_to_morse_wav(word, filename)
+#        else:
+#            self._generate_tts_wav(text, filename)
+#
+#        duration = self._get_wav_duration(filename)
+#
+#        with self.lock:
+#            self.current_state["step"] = step_name
+#            self.current_state["audio_file"] = filename
+#            self.current_state["audio_id"] += 1
+#
+#        # Sleep exact duration of audio file plus safety margin
+#        time.sleep(duration + 0.3)
     def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
         filename = f"{file_prefix}.wav"
-        
+
         if is_morse:
             self.morse_gen.spell_to_morse_wav(word, filename)
         else:
@@ -331,15 +401,90 @@ class SyncedNarratorState:
             self.current_state["audio_file"] = filename
             self.current_state["audio_id"] += 1
 
-        # Sleep exact duration of audio file plus safety margin
-        time.sleep(duration + 0.3)
+        # 1. Let the audio duration play through
+        time.sleep(duration)
 
+        # 2. Calculate jitter delay to land precisely on the next 1.0s tick grid
+        now = time.time()
+        remainder = now - int(now)
+
+        # Target the next whole second boundary
+        sleep_to_next_tick = 1.0 - remainder if remainder > 0 else 0.0
+
+        # Add a minimum 0.1s safety floor so back-to-back fast audio clips don't overlap
+        if sleep_to_next_tick < 0.1:
+            sleep_to_next_tick += 1.0
+
+        time.sleep(sleep_to_next_tick)
+
+#    def narrate_group(self, group_label, raw_word_list):
+#        group_words = self.clean_and_deduplicate_list(raw_word_list)
+#        if not group_words:
+#            return
+#
+#        words_str = ", ".join(group_words)
+#        
+#        with self.lock:
+#            self.current_state["group_label"] = group_label
+#            self.current_state["wordlist"] = group_words
+#
+#        for word in group_words:
+#            details = self.get_word_details(word)
+#
+#            with self.lock:
+#                self.current_state["current_word"] = word
+#                self.current_state["metadata"] = details
+#
+#            self._broadcast_phrase("Announcing Group List", f"Group list: {words_str}.", "group_list")
+#            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+#            self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+#            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+#
+#            if details['pos']:
+#                self._broadcast_phrase("Part of Speech", f"Part of speech: {details['pos']}.", "pos")
+#
+#            if details['definition']:
+#                self._broadcast_phrase("Definition", f"Definition: {details['definition']}", "def")
+#
+#            if details['example']:
+#                self._broadcast_phrase("Example Sentence", f"Example: {details['example']}", "example")
+#
+#            if details['synonyms']:
+#                self._broadcast_phrase("Synonyms", f"Synonyms: {', '.join(details['synonyms'])}.", "synonyms")
+#
+#            if details['antonyms']:
+#                self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(details['antonyms'])}.", "antonyms")
+#
+#            #if details['homophones']:
+#            #    self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
+#
+#            if details['hypernyms']:
+#                self._broadcast_phrase("Hypernyms", f"Hypernyms: {', '.join(details['hypernyms'])}.", "hypernyms")
+#
+#            if details['hyponyms']:
+#                self._broadcast_phrase("Hyponyms", f"Hyponyms: {', '.join(details['hyponyms'])}.", "hyponyms")
+#
+#            self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
+#            self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
+#            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
     def narrate_group(self, group_label, raw_word_list):
         group_words = self.clean_and_deduplicate_list(raw_word_list)
         if not group_words:
             return
 
-        words_str = ", ".join(group_words)
+        # Extract stress pattern from group label (e.g. "Stress 10, Tail ...")
+        stress_pattern = ""
+        if "Stress " in group_label:
+            stress_pattern = group_label.split("Stress ")[1].split(",")[0].strip()
+
+        foot_name = identify_metrical_foot(stress_pattern) if stress_pattern else None
+
+        # Build group list narration text with optional foot framing
+        if foot_name:
+            #words_announcement = f"Metrical foot: {foot_name}. Group list: {', '.join(group_words)}. Metrical foot: {foot_name}."
+            words_announcement = f"{foot_name}. Group list: {', '.join(group_words)}. Metrical foot: {foot_name}."
+        else:
+            words_announcement = f"Group list: {', '.join(group_words)}."
         
         with self.lock:
             self.current_state["group_label"] = group_label
@@ -352,7 +497,7 @@ class SyncedNarratorState:
                 self.current_state["current_word"] = word
                 self.current_state["metadata"] = details
 
-            self._broadcast_phrase("Announcing Group List", f"Group list: {words_str}.", "group_list")
+            self._broadcast_phrase("Announcing Group List", words_announcement, "group_list")
             self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
             self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
             self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
@@ -371,9 +516,6 @@ class SyncedNarratorState:
 
             if details['antonyms']:
                 self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(details['antonyms'])}.", "antonyms")
-
-            #if details['homophones']:
-            #    self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
 
             if details['hypernyms']:
                 self._broadcast_phrase("Hypernyms", f"Hypernyms: {', '.join(details['hypernyms'])}.", "hypernyms")
@@ -403,7 +545,8 @@ phonics_engine = UnifiedPhonicsEngine(max_word_length=20)
 narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120, model_name="qwen3")
 
 def narration_worker():
-    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+    #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
     group_idx = 0
 
     while True:
@@ -414,7 +557,8 @@ def narration_worker():
 
         if not next_group:
             if not rhyme_groups:
-                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+                #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
                 group_idx = 0
             next_group = rhyme_groups[group_idx % len(rhyme_groups)]
             group_idx += 1
