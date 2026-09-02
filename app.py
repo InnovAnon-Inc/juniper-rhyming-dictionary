@@ -7,7 +7,6 @@ import wave
 import numpy as np
 import json
 import urllib.request
-import subprocess
 from scipy.io import wavfile
 import pyttsx3
 import nltk
@@ -15,11 +14,8 @@ from nltk.corpus import wordnet, words
 import pronouncing
 from collections import defaultdict
 import random
-import itertools
 import threading
-import math
-import cmath
-from flask import Flask, render_template, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory
 
 # Ensure NLTK datasets are downloaded
 nltk.download('wordnet', quiet=True)
@@ -28,107 +24,8 @@ nltk.download('words', quiet=True)
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Extended Poetic Feet Map (1 to 4 Syllables)
-POETIC_FEET_MAP = {
-    "1": "Monosyllabic",
-    "01": "Iambic",
-    "10": "Trochaic",
-    "11": "Spondaic",
-    "00": "Pyrrhic",
-    "001": "Anapestic",
-    "100": "Dactylic",
-    "010": "Amphibrachic",
-    "101": "Amphimacer",
-    "110": "Bacchic",
-    "011": "Antibacchic",
-    "111": "Molossus",
-    "000": "Tribrachic",
-    "1000": "1st Paeon",
-    "0100": "2nd Paeon",
-    "0010": "3rd Paeon",
-    "0001": "4th Paeon",
-    "1100": "Ionic a majore",
-    "0011": "Ionic a minore",
-    "1001": "Choriambic",
-    "0110": "Antispastic",
-    "0111": "1st Epitrite",
-    "1011": "2nd Epitrite",
-    "1101": "3rd Epitrite",
-    "1110": "4th Epitrite",
-    "1111": "Dispondaic",
-    "0000": "Proceleusmatic"
-}
-
-def identify_foot_name(stress_str):
-    """Maps binary/ternary stress strings to classical poetic foot names."""
-    simplified = stress_str.replace('2', '1')
-    return POETIC_FEET_MAP.get(simplified, "Custom Foot")
-
-def identify_meter_name(stress_str):
-    """Maps complete stress strings to classical meter names."""
-    simplified = stress_str.replace('2', '1')
-    if simplified in POETIC_FEET_MAP:
-        return POETIC_FEET_MAP[simplified]
-    for unit_len in [2, 3, 4]:
-        if len(simplified) % unit_len == 0:
-            unit = simplified[:unit_len]
-            if unit in POETIC_FEET_MAP and unit * (len(simplified) // unit_len) == simplified:
-                count = len(simplified) // unit_len
-                feet_names = {1: "Monometer", 2: "Dimeter", 3: "Trimeter", 4: "Tetrameter", 5: "Pentameter", 6: "Hexameter"}
-                return f"{POETIC_FEET_MAP[unit]} {feet_names.get(count, 'Meter')}"
-    return "Composite Meter"
-
 # ==========================================
-# 0. Polygon & Rhythmic Balance Mathematics
-# ==========================================
-def bjorklund(steps: int, pulses: int) -> list[int]:
-    """Euclidean algorithm for rhythm generation (Björklund)."""
-    if pulses <= 0: return [0] * steps
-    if pulses >= steps: return [1] * steps
-    pattern = [[1] for _ in range(pulses)]
-    remainder = [[0] for _ in range(steps - pulses)]
-    while len(remainder) > 1:
-        count = min(len(pattern), len(remainder))
-        for i in range(count):
-            pattern[i].extend(remainder.pop(0))
-    pattern.extend(remainder)
-    return [b for group in pattern for b in group]
-
-def analyze_polygon_balance(stress_str: str, tol: float = 1e-5):
-    """
-    Evaluates meter balance across Cyclotomic (Center of Mass) and Björklund domains.
-    """
-    N = len(stress_str)
-    if N == 0: return False, "Invalid"
-
-    # 1. Cyclotomic Zero-Sum Balance
-    weights = [0.0 if c == '0' else (1.0 if c == '1' else 1.5) for c in stress_str]
-    total_w = sum(weights)
-    is_cyclotomic = False
-    if total_w > 0:
-        center = sum(weights[i] * cmath.exp(2j * math.pi * i / N) for i in range(N)) / total_w
-        if abs(center) < tol:
-            is_cyclotomic = True
-
-    # 2. Björklund Euclidean Pattern Matching
-    bin_pat = [0 if c == '0' else 1 for c in stress_str]
-    k = sum(bin_pat)
-    is_bjorklund = False
-    if k > 0:
-        base_euc = bjorklund(N, k)
-        for shift in range(N):
-            if base_euc[shift:] + base_euc[:shift] == bin_pat:
-                is_bjorklund = True
-                break
-
-    is_balanced = is_cyclotomic or is_bjorklund
-    poly_type = "Cyclotomic & Björklund" if (is_cyclotomic and is_bjorklund) else \
-                ("Cyclotomic" if is_cyclotomic else ("Björklund Euclidean" if is_bjorklund else "Unbalanced"))
-
-    return is_balanced, poly_type
-
-# ==========================================
-# 1. Advanced Phonetic & Super Group Engine
+# 1. Phonetic Rhyme Engine
 # ==========================================
 class UnifiedPhonicsEngine:
     def __init__(self, max_word_length=20):
@@ -180,7 +77,7 @@ class UnifiedPhonicsEngine:
         all_words = pronouncing.search(".*")
         for word in all_words:
             clean = self._clean_word(word)
-            if not clean or len(clean) <= 1 or len(clean) > self.max_word_length or clean in self.word_profiles:
+            if not clean or len(clean) > self.max_word_length or clean in self.word_profiles:
                 continue
 
             phones_list = pronouncing.phones_for_word(clean)
@@ -198,176 +95,46 @@ class UnifiedPhonicsEngine:
             clean_phones = re.sub(r'\d+', '', raw_phones)
             self.phone_to_words[clean_phones].append(clean)
 
+    def get_homophones(self, target_word):
+        clean = self._clean_word(target_word)
+        phones_list = pronouncing.phones_for_word(clean)
+        if not phones_list:
+            return []
+        clean_phones = re.sub(r'\d+', '', phones_list[0])
+        matches = self.phone_to_words.get(clean_phones, [])
+        return [w for w in matches if w != clean]
 
-# Pre-filter balanced polygons for verse lengths 8..12 once at startup
-BALANCED_METERS_BY_LEN = defaultdict(list)
-
-def precompute_balanced_polygons():
-    for N in range(8, 13):
-        # Generate binary/ternary distributions
-        for p in itertools.product(['0', '1', '2'], repeat=N):
-            s = ''.join(p)
-            is_bal, poly_type = analyze_polygon_balance(s)
-            if is_bal:
-                BALANCED_METERS_BY_LEN[N].append((s, poly_type))
-
-precompute_balanced_polygons()
-
-class SuperGroupEngine:
-    def __init__(self, phonics_engine):
-        self.phonics = phonics_engine
-
-    def _partition_stress_string(self, target_stress_str):
-        results = []
-        available_stresses = set(self.phonics.rhyme_matrix.keys())
-
-        def backtrack(remaining, current_path):
-            if not remaining:
-                results.append(current_path)
-                return
-            for i in range(1, len(remaining) + 1):
-                chunk = remaining[:i]
-                if chunk in available_stresses:
-                    backtrack(remaining[i:], current_path + [chunk])
-
-        backtrack(target_stress_str, [])
-        return results
-
-    def build_super_groups_for_verse(self):
-        """Generates super groups targeting full poetic verse length (8-12 syllables)."""
-        super_groups = []
-#        # Verse lengths typically span 8 to 12 syllables (e.g., Iambic Pentameter/Tetrameter)
-#        verse_syllables = random.choice([8, 9, 10, 11, 12])
-#        
-#        # Candidate stress string generation
-#        possible_stresses = [''.join(p) for p in itertools.product(['0', '1', '2'], repeat=verse_syllables)]
-#        
-#        # Filter strictly for balanced polygonal meters
-#        balanced_candidates = []
-#        for s in possible_stresses:
-#            is_bal, p_type = analyze_polygon_balance(s)
-#            if is_bal:
-#                balanced_candidates.append((s, p_type))
-
-        verse_syllables = random.choice(list(BALANCED_METERS_BY_LEN.keys()))
-        balanced_candidates = list(BALANCED_METERS_BY_LEN[verse_syllables])
-        random.shuffle(balanced_candidates)
-
-        random.shuffle(balanced_candidates)
-
-        #for target_stress_str, poly_type in balanced_candidates[:10]:
-        for target_stress_str, poly_type in balanced_candidates:#[:10]:
-            partitions = self._partition_stress_string(target_stress_str)
-            if not partitions:
-                continue
-
-            meter_name = identify_meter_name(target_stress_str)
-
-#            # Iterate over different partition breakdowns (different combinations of poetic feet)
-#            for stress_sequence in partitions[:4]:
-#                combination_groups = []
-#                valid = True
-#                parsed_feet_details = []
-#
-#                for idx, s in enumerate(stress_sequence):
-#                    tails = list(self.phonics.rhyme_matrix[s].keys())
-#                    if not tails:
-#                        valid = False
-#                        break
-#                    chosen_tail = random.choice(tails)
-#                    words = self.phonics.rhyme_matrix[s][chosen_tail]
-#                    foot_name = identify_foot_name(s)
-#                    
-#                    foot_detail_str = f"{s} ({foot_name.lower()}, _{chosen_tail})"
-#                    parsed_feet_details.append(foot_detail_str)
-#
-#                    combination_groups.append({
-#                        "foot_index": idx,
-#                        "stress": s,
-#                        "foot_name": foot_name,
-#                        "rhyme_tail": chosen_tail,
-#                        "label": f"Foot #{idx+1}: {foot_name} [{s}] (Rhyme Tail: _{chosen_tail})",
-#                        "words": words
-#                    })
-            # Iterate over different partition breakdowns (different combinations of poetic feet)
-            #for stress_sequence in partitions[:4]:
-            for stress_sequence in partitions:#[:4]:
-                combination_groups = []
-                valid = True
-                parsed_feet_details = []
-                used_tails_in_sequence = set()  # Track used tails to prevent duplicate word lists
-
-                for idx, s in enumerate(stress_sequence):
-                    # Filter out rhyme tails already assigned to earlier feet in this sequence
-                    available_tails = [t for t in self.phonics.rhyme_matrix[s].keys() if t not in used_tails_in_sequence]
-
-                    # Fallback to all tails if we run out of unique ones for this stress key
-                    if not available_tails:
-                        available_tails = list(self.phonics.rhyme_matrix[s].keys())
-
-                    if not available_tails:
-                        valid = False
-                        break
-
-                    chosen_tail = random.choice(available_tails)
-                    used_tails_in_sequence.add(chosen_tail)
-
-                    words = self.phonics.rhyme_matrix[s][chosen_tail]
-                    foot_name = identify_foot_name(s)
-
-                    foot_detail_str = f"{s} ({foot_name.lower()}, _{chosen_tail})"
-                    parsed_feet_details.append(foot_detail_str)
-
-                    combination_groups.append({
-                        "foot_index": idx,
-                        "stress": s,
-                        "foot_name": foot_name,
-                        "rhyme_tail": chosen_tail,
-                        "label": f"Foot #{idx+1}: {foot_name} [{s}] (Rhyme Tail: _{chosen_tail})",
-                        "words": words
-                    })
-
-                if valid and combination_groups:
-                    detailed_breakdown = " + ".join(parsed_feet_details)
-                    super_groups.append({
-                        "theme_raw": f"{meter_name} ({poly_type}) | Pattern '{target_stress_str}'",
-                        "detailed_breakdown": detailed_breakdown,
-                        "parsed_feet_details": parsed_feet_details,
-                        "target_stress": target_stress_str,
-                        "meter_name": meter_name,
-                        "poly_type": poly_type,
-                        "sub_groups": combination_groups
-                    })
-
-        random.shuffle(super_groups)
-        return super_groups
-
-
-# ==========================================
-# 2. Lightweight & Fast TTS Engine Wrapper
-# ==========================================
-class FastTTSEngine:
-    def __init__(self, speech_rate=120):
-        self.piper_path = "/usr/local/bin/piper"
-        self.piper_model = "en_US-lessac-medium.onnx"
-        self.use_piper = os.path.exists(self.piper_path) and os.path.exists(self.piper_model)
+    def get_group_for_word(self, target_word):
+        clean = self._clean_word(target_word)
+        profile = self.word_profiles.get(clean)
+        if not profile:
+            phones = pronouncing.phones_for_word(clean)
+            if phones:
+                profile = self._extract_phonetic_parts(phones[0])
         
-        if not self.use_piper:
-            self.pyttsx_engine = pyttsx3.init()
-            self.pyttsx_engine.setProperty('rate', speech_rate)
-            # TODO can the pitch be adjusted also? centering more around A3?
+        if profile:
+            stress = profile["stress"]
+            tail = profile["rhyme_tail"]
+            word_list = self.rhyme_matrix[stress].get(tail, [clean])
+            label = f"Stress {stress}, Tail {tail}"
+            return label, word_list
+        return None, None
 
-    def generate_wav(self, text, filepath):
-        if self.use_piper:
-            cmd = f'echo "{text}" | {self.piper_path} --model {self.piper_model} --output_file {filepath}'
-            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            self.pyttsx_engine.save_to_file(text, filepath)
-            self.pyttsx_engine.runAndWait()
+    def generate_rhyme_groups(self, max_syllables=8, min_rhymes=3):
+        groups = []
+        for stress in sorted(self.rhyme_matrix.keys(), key=lambda s: (len(s), s)):
+            if len(stress) > max_syllables:
+                continue
+            for tail, word_list in self.rhyme_matrix[stress].items():
+                if len(word_list) >= min_rhymes:
+                    label = f"Stress {stress}, Tail {tail}"
+                    groups.append((label, word_list))
+        random.shuffle(groups)
+        return groups
 
 
 # ==========================================
-# 3. Morse Code Audio Synthesizer
+# 2. Morse Audio Generator
 # ==========================================
 class MorseAudioGenerator:
     def __init__(self, freq=432, sample_rate=44100):
@@ -406,6 +173,7 @@ class MorseAudioGenerator:
                     audio_chunks.append(elem_space)
                 audio_chunks.append(char_space)
 
+        # Pad with silence at end
         audio_chunks.append(np.zeros(int(self.sample_rate * (silence_ms / 1000.0))))
 
         if audio_chunks:
@@ -418,22 +186,22 @@ class MorseAudioGenerator:
 
 
 # ==========================================
-# 4. Synchronized Audio State Manager
+# 3. Synchronized Audio State Manager
 # ==========================================
 class SyncedNarratorState:
-    def __init__(self, engine_ref, speech_rate=120):
+    def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
         self.phonics_engine = engine_ref
-        self.super_engine = SuperGroupEngine(engine_ref)
         self.morse_gen = MorseAudioGenerator(freq=432)
-        self.tts = FastTTSEngine(speech_rate=speech_rate)
+        self.tts_engine = pyttsx3.init()
+        self.tts_engine.setProperty('rate', speech_rate)
         
+        self.ollama_url = ollama_url
+        self.model_name = model_name
         self.valid_english = set(words.words())
         self.pos_map = {'n': 'noun', 'v': 'verb', 'a': 'adjective', 's': 'adjective', 'r': 'adverb'}
         
         self.current_state = {
-            "super_group_theme": "Initializing...",
             "group_label": "Initializing...",
-            "active_foot_index": 0,
             "wordlist": [],
             "current_word": "",
             "step": "Idle",
@@ -441,13 +209,20 @@ class SyncedNarratorState:
             "audio_file": None,
             "audio_id": 0
         }
+        self.priority_queue = []
         self.lock = threading.Lock()
 
-    def _pad_wav_with_silence(self, filepath, silence_duration_sec=0.8): # TODO maybe make it 0.8 give or take, so as to align with 60 bpm
+    def _pad_wav_with_silence(self, filepath, silence_duration_sec=1.0):
+        """Reads a generated WAV and appends trailing silence so text isn't cut off."""
         try:
             sr, data = wavfile.read(filepath)
             silence_samples = int(sr * silence_duration_sec)
-            silence = np.zeros(silence_samples, dtype=data.dtype) if data.ndim == 1 else np.zeros((silence_samples, data.shape[1]), dtype=data.dtype)
+            
+            if data.ndim == 1:
+                silence = np.zeros(silence_samples, dtype=data.dtype)
+            else:
+                silence = np.zeros((silence_samples, data.shape[1]), dtype=data.dtype)
+
             padded_data = np.concatenate((data, silence))
             wavfile.write(filepath, sr, padded_data)
         except Exception as e:
@@ -455,7 +230,8 @@ class SyncedNarratorState:
 
     def _generate_tts_wav(self, text, filename):
         filepath = os.path.join(CACHE_DIR, filename)
-        self.tts.generate_wav(text, filepath)
+        self.tts_engine.save_to_file(text, filepath)
+        self.tts_engine.runAndWait()
         self._pad_wav_with_silence(filepath, silence_duration_sec=0.8)
         return filename
 
@@ -463,51 +239,86 @@ class SyncedNarratorState:
         filepath = os.path.join(CACHE_DIR, filename)
         try:
             with wave.open(filepath, 'r') as f:
-                return f.getnframes() / float(f.getframerate())
-        except Exception: # TODO don't silently eat errors
+                frames = f.getnframes()
+                rate = f.getframerate()
+                return frames / float(rate)
+        except Exception:
             return 2.5
+
+    def _generate_ollama_example(self, word):
+        prompt = f"Write one very short, simple, kid-friendly sentence using the word '{word}'. Output only the sentence."
+        payload = json.dumps({"model": self.model_name, "prompt": prompt, "stream": False}).encode('utf-8')
+        req = urllib.request.Request(f"{self.ollama_url}/api/generate", data=payload, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=3) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                return res_data.get("response", "").strip()
+        except Exception:
+            return None
 
     def clean_and_deduplicate_list(self, raw_words):
         filtered = []
         for w in raw_words:
             w_clean = w.lower().strip()
-            if len(w_clean) > 1 and w_clean in self.valid_english and bool(wordnet.synsets(w_clean)):
+            has_definition = bool(wordnet.synsets(w_clean))
+            #if w_clean in self.valid_english or has_definition:
+            if w_clean in self.valid_english and has_definition:
                 filtered.append(w_clean)
         return list(dict.fromkeys(filtered))
 
     def get_word_details(self, word):
         synsets = wordnet.synsets(word)
+        homophones = self.phonics_engine.get_homophones(word)
+        
         if not synsets:
-            return {"word": word, "senses": []}
+            example = self._generate_ollama_example(word)
+            return {
+                "pos": "word",
+                "definition": f"The word is {word}.",
+                "example": example,
+                "synonyms": [],
+                "antonyms": [],
+                "hypernyms": [],
+                "hyponyms": [],
+                "homophones": homophones
+            }
 
-        senses = []
-        for syn in synsets[:3]:
-            pos_full = self.pos_map.get(syn.pos(), 'word')
-            definition = syn.definition()
-            raw_examples = syn.examples()
-            examples = [e for e in raw_examples if word.lower() in e.lower()][:1]
+        syn = synsets[0]
+        pos_full = self.pos_map.get(syn.pos(), 'word')
+        definition = syn.definition()
+        examples = syn.examples()
+        example = examples[0] if examples else self._generate_ollama_example(word)
 
-            synonyms, antonyms = set(), set()
-            for lemma in syn.lemmas():
+        synonyms, antonyms, hypernyms, hyponyms = set(), set(), set(), set()
+        for s in synsets:
+            for lemma in s.lemmas():
                 clean_lemma = lemma.name().replace('_', ' ')
                 if clean_lemma.lower() != word.lower():
                     synonyms.add(clean_lemma)
                 if lemma.antonyms():
                     for ant in lemma.antonyms():
                         antonyms.add(ant.name().replace('_', ' '))
+            for hyp in s.hypernyms():
+                for lemma in hyp.lemmas():
+                    hypernyms.add(lemma.name().replace('_', ' '))
+            for hyp in s.hyponyms():
+                for lemma in hyp.lemmas():
+                    hyponyms.add(lemma.name().replace('_', ' '))
 
-            senses.append({
-                "pos": pos_full,
-                "definition": definition,
-                "examples": examples,
-                "synonyms": list(synonyms)[:3],
-                "antonyms": list(antonyms)[:3]
-            })
-
-        return {"word": word, "senses": senses}
+        return {
+            "pos": pos_full,
+            "definition": definition,
+            "example": example,
+            "synonyms": list(synonyms)[:5],
+            "antonyms": list(antonyms)[:5],
+            "hypernyms": list(hypernyms)[:5],
+            "hyponyms": list(hyponyms)[:5],
+            "homophones": homophones[:5]
+        }
 
     def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
         filename = f"{file_prefix}.wav"
+        
         if is_morse:
             self.morse_gen.spell_to_morse_wav(word, filename)
         else:
@@ -520,81 +331,96 @@ class SyncedNarratorState:
             self.current_state["audio_file"] = filename
             self.current_state["audio_id"] += 1
 
-        time.sleep(duration + 0.3) # TODO can this also be fudged to help align with 60 bpm ?
+        # Sleep exact duration of audio file plus safety margin
+        time.sleep(duration + 0.3)
 
-    def narrate_super_group(self, super_group):
-        theme_raw = super_group["theme_raw"]
-        feet_details = super_group["parsed_feet_details"]
-        sub_groups = super_group["sub_groups"]
+    def narrate_group(self, group_label, raw_word_list):
+        group_words = self.clean_and_deduplicate_list(raw_word_list)
+        if not group_words:
+            return
 
-        for idx, group in enumerate(sub_groups):
-            # Format title with current position highlighted via brackets/asterisks
-            formatted_breakdown = []
-            for f_idx, foot_str in enumerate(feet_details):
-                if f_idx == idx:
-                    formatted_breakdown.append(f"👉 [{foot_str}] 👈")
-                else:
-                    formatted_breakdown.append(foot_str)
-            
-            full_theme_title = f"{theme_raw} | Breakdown: [{' + '.join(formatted_breakdown)}]"
+        words_str = ", ".join(group_words)
+        
+        with self.lock:
+            self.current_state["group_label"] = group_label
+            self.current_state["wordlist"] = group_words
 
-            group_label = group["label"]
-            group_words = self.clean_and_deduplicate_list(group["words"])
-            
-            if not group_words:
-                continue
+        for word in group_words:
+            details = self.get_word_details(word)
 
-            words_str = ", ".join(group_words)
             with self.lock:
-                self.current_state["super_group_theme"] = full_theme_title
-                self.current_state["group_label"] = group_label
-                self.current_state["active_foot_index"] = idx
-                self.current_state["wordlist"] = group_words
-                self.current_state["step"] = f"Foot {idx+1}/{len(sub_groups)}"
+                self.current_state["current_word"] = word
+                self.current_state["metadata"] = details
 
-            self._broadcast_phrase("Announcing Group List", f"Sub-group rhyming list: {words_str}.", "group_list")
+            self._broadcast_phrase("Announcing Group List", f"Group list: {words_str}.", "group_list")
+            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+            self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
+            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
 
-            #for word in group_words[:3]:  # Cycle top matching words per foot group
-            for word in group_words:  # Cycle top matching words per foot group
-                details = self.get_word_details(word)
+            if details['pos']:
+                self._broadcast_phrase("Part of Speech", f"Part of speech: {details['pos']}.", "pos")
 
-                with self.lock:
-                    self.current_state["current_word"] = word
-                    self.current_state["metadata"] = details
+            if details['definition']:
+                self._broadcast_phrase("Definition", f"Definition: {details['definition']}", "def")
 
-                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
-                self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
-                self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+            if details['example']:
+                self._broadcast_phrase("Example Sentence", f"Example: {details['example']}", "example")
 
-                for idx_s, sense in enumerate(details["senses"], start=1):
-                    concise_phrase = f"As a {sense['pos']}: {sense['definition']}."
-                    self._broadcast_phrase("Definition", concise_phrase, "def")
-                    
-                    for ex in sense["examples"]:
-                        self._broadcast_phrase("Example Sentence", f"Example: {ex}", "example")
+            if details['synonyms']:
+                self._broadcast_phrase("Synonyms", f"Synonyms: {', '.join(details['synonyms'])}.", "synonyms")
 
-                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
-                self._broadcast_phrase("Morse Code Spelling", "", "morse", is_morse=True, word=word)
-                self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
+            if details['antonyms']:
+                self._broadcast_phrase("Antonyms", f"Antonyms: {', '.join(details['antonyms'])}.", "antonyms")
+
+            #if details['homophones']:
+            #    self._broadcast_phrase("Homophones", f"Homophones: {', '.join(details['homophones'])}.", "homophones")
+
+            if details['hypernyms']:
+                self._broadcast_phrase("Hypernyms", f"Hypernyms: {', '.join(details['hypernyms'])}.", "hypernyms")
+
+            if details['hyponyms']:
+                self._broadcast_phrase("Hyponyms", f"Hyponyms: {', '.join(details['hyponyms'])}.", "hyponyms")
+
+            self._broadcast_phrase("Repeating Word", f"Word: {word}.", "repeat_word")
+            self._broadcast_phrase("Morse Code Spelling", "", "morse_repeat", is_morse=True, word=word)
+            self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
+
+    def enqueue_priority_word(self, word):
+        label, word_list = self.phonics_engine.get_group_for_word(word)
+        if label and word_list:
+            with self.lock:
+                self.priority_queue.insert(0, (label, word_list))
+            return True, label
+        return False, "Word not found in dictionary."
 
 
 # ==========================================
-# 5. Flask Application & Worker Execution
+# 4. Flask Application & Background Worker
 # ==========================================
 app = Flask(__name__)
 
 phonics_engine = UnifiedPhonicsEngine(max_word_length=20)
-narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120)
+narrator_state = SyncedNarratorState(engine_ref=phonics_engine, speech_rate=120, model_name="qwen3")
 
 def narration_worker():
-    while True:
-        super_groups = narrator_state.super_engine.build_super_groups_for_verse()
-        if not super_groups:
-            time.sleep(1)
-            continue
+    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+    group_idx = 0
 
-        for sg in super_groups:
-            narrator_state.narrate_super_group(sg)
+    while True:
+        next_group = None
+        with narrator_state.lock:
+            if narrator_state.priority_queue:
+                next_group = narrator_state.priority_queue.pop(0)
+
+        if not next_group:
+            if not rhyme_groups:
+                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+                group_idx = 0
+            next_group = rhyme_groups[group_idx % len(rhyme_groups)]
+            group_idx += 1
+
+        label, word_list = next_group
+        narrator_state.narrate_group(label, word_list)
 
 
 @app.route("/")
@@ -609,6 +435,18 @@ def serve_audio(filename):
 def get_state():
     with narrator_state.lock:
         return jsonify(narrator_state.current_state)
+
+@app.route("/api/search", methods=["POST"])
+def search_word():
+    data = request.get_json() or {}
+    word = data.get("word", "").strip().lower()
+    if not word:
+        return jsonify({"status": "error", "message": "No word provided"}), 400
+
+    success, message = narrator_state.enqueue_priority_word(word)
+    if success:
+        return jsonify({"status": "success", "message": f"Queued group for word '{word}' ({message})"})
+    return jsonify({"status": "error", "message": message}), 404
 
 if __name__ == "__main__":
     t = threading.Thread(target=narration_worker, daemon=True)
