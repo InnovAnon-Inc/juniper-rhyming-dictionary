@@ -241,8 +241,58 @@ class MorseAudioGenerator:
 # ==========================================
 # 3. Synchronized Audio State Manager
 # ==========================================
+import asyncio
+import websockets
+
+def note_name_to_freq(note_str, a4_freq=432.0):
+    """Converts a note string like 'C4', 'F#5' to Hz based on standard equal temperament."""
+    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    # Normalize flat notes to sharp equivalents
+    flats = {'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'}
+
+    name = note_str[:-1]
+    octave = int(note_str[-1])
+    if name in flats:
+        name = flats[name]
+
+    semitones_from_c0 = note_names.index(name) + (octave + 1) * 12
+    a4_midi = 69
+    semitones_from_a4 = semitones_from_c0 - a4_midi
+    return a4_freq * (2.0 ** (semitones_from_a4 / 12.0))
+
+def get_nearest_chord_tone_freq(chord_notes, target_freq=432.0, a4_freq=432.0):
+    """Finds the pitch in chord_notes closest in Hz to target_freq."""
+    if not chord_notes:
+        return target_freq
+
+    freqs = [note_name_to_freq(n, a4_freq) for n in chord_notes]
+    return min(freqs, key=lambda f: abs(f - target_freq))
+
+#class SyncedNarratorState:
+#    def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
+#        self.phonics_engine = engine_ref
+#        self.morse_gen = MorseAudioGenerator(freq=432)
+#        self.tts_engine = pyttsx3.init()
+#        self.tts_engine.setProperty('rate', speech_rate)
+#        
+#        self.ollama_url = ollama_url
+#        self.model_name = model_name
+#        self.valid_english = set(words.words())
+#        self.pos_map = {'n': 'noun', 'v': 'verb', 'a': 'adjective', 's': 'adjective', 'r': 'adverb'}
+#        
+#        self.current_state = {
+#            "group_label": "Initializing...",
+#            "wordlist": [],
+#            "current_word": "",
+#            "step": "Idle",
+#            "metadata": {},
+#            "audio_file": None,
+#            "audio_id": 0
+#        }
+#        self.priority_queue = []
+#        self.lock = threading.Lock()
 class SyncedNarratorState:
-    def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3"):
+    def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3", ws_url="ws://127.0.0.1:65432"):
         self.phonics_engine = engine_ref
         self.morse_gen = MorseAudioGenerator(freq=432)
         self.tts_engine = pyttsx3.init()
@@ -252,6 +302,11 @@ class SyncedNarratorState:
         self.model_name = model_name
         self.valid_english = set(words.words())
         self.pos_map = {'n': 'noun', 'v': 'verb', 'a': 'adjective', 's': 'adjective', 'r': 'adverb'}
+        
+        # Chord Sync Properties
+        self.ws_url = ws_url
+        self.current_chord = []
+        self.a4_freq = 432.0
         
         self.current_state = {
             "group_label": "Initializing...",
@@ -264,6 +319,29 @@ class SyncedNarratorState:
         }
         self.priority_queue = []
         self.lock = threading.Lock()
+
+        # Start WebSocket Client Thread
+        threading.Thread(target=self._start_ws_client, daemon=True).start()
+
+    def _start_ws_client(self):
+        """Runs an async loop inside a background thread to stay connected to chimes.py WS."""
+        async def listen():
+            while True:
+                try:
+                    async with websockets.connect(self.ws_url) as ws:
+                        while True:
+                            msg = await ws.recv()
+                            data = json.loads(msg)
+                            with self.lock:
+                                self.current_chord = data.get("chord", [])
+                                self.a4_freq = data.get("a4_freq", 432.0)
+                except Exception:
+                    # Retry connection after a short delay if chimes.py restarts
+                    await asyncio.sleep(2.0)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(listen())
 
     def _pad_wav_with_silence(self, filepath, silence_duration_sec=1.0):
         """Reads a generated WAV and appends trailing silence so text isn't cut off."""
@@ -369,9 +447,26 @@ class SyncedNarratorState:
             "homophones": homophones[:5]
         }
 
+##    def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
+##        filename = f"{file_prefix}.wav"
+##        
+##        if is_morse:
+##            self.morse_gen.spell_to_morse_wav(word, filename)
+##        else:
+##            self._generate_tts_wav(text, filename)
+##
+##        duration = self._get_wav_duration(filename)
+##
+##        with self.lock:
+##            self.current_state["step"] = step_name
+##            self.current_state["audio_file"] = filename
+##            self.current_state["audio_id"] += 1
+##
+##        # Sleep exact duration of audio file plus safety margin
+##        time.sleep(duration + 0.3)
 #    def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
 #        filename = f"{file_prefix}.wav"
-#        
+#
 #        if is_morse:
 #            self.morse_gen.spell_to_morse_wav(word, filename)
 #        else:
@@ -384,12 +479,35 @@ class SyncedNarratorState:
 #            self.current_state["audio_file"] = filename
 #            self.current_state["audio_id"] += 1
 #
-#        # Sleep exact duration of audio file plus safety margin
-#        time.sleep(duration + 0.3)
+#        # 1. Let the audio duration play through
+#        time.sleep(duration)
+#
+#        # 2. Calculate jitter delay to land precisely on the next 1.0s tick grid
+#        now = time.time()
+#        remainder = now - int(now)
+#
+#        # Target the next whole second boundary
+#        sleep_to_next_tick = 1.0 - remainder if remainder > 0 else 0.0
+#
+#        # Add a minimum 0.1s safety floor so back-to-back fast audio clips don't overlap
+#        if sleep_to_next_tick < 0.1:
+#            sleep_to_next_tick += 1.0
+#
+#        time.sleep(sleep_to_next_tick)
     def _broadcast_phrase(self, step_name, text, file_prefix, is_morse=False, word=""):
         filename = f"{file_prefix}.wav"
 
         if is_morse:
+            with self.lock:
+                chord = list(self.current_chord)
+                a4 = self.a4_freq
+
+            if chord:
+                # Set Morse generator frequency to the nearest chord tone
+                self.morse_gen.freq = get_nearest_chord_tone_freq(chord, target_freq=432.0, a4_freq=a4)
+            else:
+                self.morse_gen.freq = 432.0
+
             self.morse_gen.spell_to_morse_wav(word, filename)
         else:
             self._generate_tts_wav(text, filename)
@@ -408,10 +526,8 @@ class SyncedNarratorState:
         now = time.time()
         remainder = now - int(now)
 
-        # Target the next whole second boundary
         sleep_to_next_tick = 1.0 - remainder if remainder > 0 else 0.0
 
-        # Add a minimum 0.1s safety floor so back-to-back fast audio clips don't overlap
         if sleep_to_next_tick < 0.1:
             sleep_to_next_tick += 1.0
 
