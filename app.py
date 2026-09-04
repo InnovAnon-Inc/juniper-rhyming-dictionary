@@ -175,7 +175,18 @@ class UnifiedPhonicsEngine:
             return label, word_list
         return None, None
 
-    def generate_rhyme_groups(self, max_syllables=8, min_rhymes=3):
+#    def generate_rhyme_groups(self, max_syllables=8, min_rhymes=3):
+#        groups = []
+#        for stress in sorted(self.rhyme_matrix.keys(), key=lambda s: (len(s), s)):
+#            if len(stress) > max_syllables:
+#                continue
+#            for tail, word_list in self.rhyme_matrix[stress].items():
+#                if len(word_list) >= min_rhymes:
+#                    label = f"Stress {stress}, Tail {tail}"
+#                    groups.append((label, word_list))
+#        random.shuffle(groups)
+#        return groups
+    def generate_rhyme_groups(self, max_syllables=20, min_rhymes=3):
         groups = []
         for stress in sorted(self.rhyme_matrix.keys(), key=lambda s: (len(s), s)):
             if len(stress) > max_syllables:
@@ -183,8 +194,12 @@ class UnifiedPhonicsEngine:
             for tail, word_list in self.rhyme_matrix[stress].items():
                 if len(word_list) >= min_rhymes:
                     label = f"Stress {stress}, Tail {tail}"
-                    groups.append((label, word_list))
-        random.shuffle(groups)
+                    groups.append({
+                        "label": label,
+                        "stress": stress,
+                        "tail": tail,
+                        "words": word_list
+                    })
         return groups
 
 
@@ -731,26 +746,111 @@ narrator_state = SyncedNarratorState(
     model_name="Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 )
 
+#def narration_worker():
+#    #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+#    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
+#    group_idx = 0
+#
+#    while True:
+#        next_group = None
+#        with narrator_state.lock:
+#            if narrator_state.priority_queue:
+#                next_group = narrator_state.priority_queue.pop(0)
+#
+#        if not next_group:
+#            if not rhyme_groups:
+#                #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
+#                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
+#                group_idx = 0
+#            next_group = rhyme_groups[group_idx % len(rhyme_groups)]
+#            group_idx += 1
+#
+#        label, word_list = next_group
+#        narrator_state.narrate_group(label, word_list)
+def levenshtein_distance(s1, s2):
+    """Calculates edit distance between two stress strings."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+def calculate_group_distance(g1, g2):
+    """
+    Measures phonetic closeness between two groups.
+    A distance of 1 means 1 digit added/removed/swapped in stress, or identical stress with adjacent tail.
+    """
+    stress_dist = levenshtein_distance(g1["stress"], g2["stress"])
+    tail_dist = 0 if g1["tail"] == g2["tail"] else 1
+    return stress_dist + tail_dist
+
 def narration_worker():
-    #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
-    rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
-    group_idx = 0
+    all_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
+    if not all_groups:
+        return
+
+    visited = set()
+    # Pick a starting group (e.g., shortest stress pattern)
+    current_group = min(all_groups, key=lambda g: len(g["stress"]))
 
     while True:
-        next_group = None
+        # 1. Priority Queue Handling (User manual search override)
+        next_group_data = None
         with narrator_state.lock:
             if narrator_state.priority_queue:
-                next_group = narrator_state.priority_queue.pop(0)
+                label, word_list = narrator_state.priority_queue.pop(0)
+                # Parse priority item back into dict format if needed
+                stress = label.split("Stress ")[1].split(",")[0].strip() if "Stress " in label else ""
+                tail = label.split("Tail ")[1].strip() if "Tail " in label else ""
+                next_group_data = {
+                    "label": label,
+                    "stress": stress,
+                    "tail": tail,
+                    "words": word_list
+                }
 
-        if not next_group:
-            if not rhyme_groups:
-                #rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=8, min_rhymes=3)
-                rhyme_groups = phonics_engine.generate_rhyme_groups(max_syllables=20, min_rhymes=3)
-                group_idx = 0
-            next_group = rhyme_groups[group_idx % len(rhyme_groups)]
-            group_idx += 1
+        # 2. Step-wise Traversal if no user priority
+        if not next_group_data:
+            visited.add(current_group["label"])
 
-        label, word_list = next_group
+            # Reset history if all groups have been explored
+            if len(visited) >= len(all_groups):
+                visited.clear()
+
+            # Find unvisited neighbors sorted by smallest edit distance
+            candidates = [g for g in all_groups if g["label"] not in visited]
+
+            if candidates:
+                # Calculate distances from current_group
+                scored_candidates = [
+                    (calculate_group_distance(current_group, cand), cand)
+                    for cand in candidates
+                ]
+
+                # Find minimum distance available (ideally dist == 1)
+                min_dist = min(dist for dist, _ in scored_candidates)
+                best_steps = [cand for dist, cand in scored_candidates if dist == min_dist]
+
+                # Pick randomly among the closest minimal-step neighbors
+                current_group = random.choice(best_steps)
+            else:
+                current_group = random.choice(all_groups)
+
+            next_group_data = current_group
+
+        # 3. Execute Narration
+        label = next_group_data["label"]
+        word_list = next_group_data["words"]
         narrator_state.narrate_group(label, word_list)
 
 
