@@ -1,0 +1,34 @@
+{
+  "current_state": {
+    "group_label": "Stress 020010, Tail EY_SH_AH_N",
+    "wordlist": [
+      "acidification",
+      "collectivization",
+      "commercialization",
+      "decentralization",
+      "demobilization",
+      "democratization",
+      "demoralization",
+      "detoxification",
+      "disorganization",
+      "disorientation",
+      "disqualification",
+      "diversification",
+      "electrification",
+      "experimentation",
+      "identification",
+      "intensification",
+      "misrepresentation",
+      "monopolization",
+      "personification",
+      "reclassification",
+      "reunification",
+      "saponification"
+    ],
+    "current_word": "",
+    "step": "Idle",
+    "metadata": {},
+    "audio_file": null,
+    "audio_id": 0
+  }
+}

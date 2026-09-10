@@ -286,6 +286,8 @@ def get_nearest_chord_tone_freq(chord_notes, target_freq=432.0, a4_freq=432.0):
     freqs = [note_name_to_freq(n, a4_freq) for n in chord_notes]
     return min(freqs, key=lambda f: abs(f - target_freq))
 
+STATE_FILE = os.path.join(os.path.dirname(__file__), "narrator_state.json")
+
 class SyncedNarratorState:
     #def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11434", model_name="qwen3", ws_url="ws://127.0.0.1:65432"):
     def __init__(self, engine_ref, speech_rate=120, ollama_url="http://127.0.0.1:11435", model_name="qwen3", ws_url="ws://127.0.0.1:65432"):
@@ -293,6 +295,8 @@ class SyncedNarratorState:
         self.morse_gen = MorseAudioGenerator(freq=432)
         self.tts_engine = pyttsx3.init()
         self.tts_engine.setProperty('rate', speech_rate)
+
+        self.tts_engine.setProperty('voice', 'en-us')
         
         self.ollama_url = ollama_url
         self.model_name = model_name
@@ -318,6 +322,25 @@ class SyncedNarratorState:
 
         # Start WebSocket Client Thread
         threading.Thread(target=self._start_ws_client, daemon=True).start()
+
+    def _load_persisted_state(self):
+        """Loads state from JSON file if available."""
+        if os.path.exists(STATE_FILE):
+            try:
+                with open(STATE_FILE, "r") as f:
+                    saved_data = json.load(f)
+                    self.current_state.update(saved_data.get("current_state", {}))
+                    print(f"Loaded previous state. Resuming at word: '{self.current_state.get('current_word')}' in group: '{self.current_state.get('group_label')}'")
+            except Exception as e:
+                print(f"Error loading state file: {e}")
+
+    def _save_persisted_state(self):
+        """Saves current state to JSON file."""
+        try:
+            with open(STATE_FILE, "w") as f:
+                json.dump({"current_state": self.current_state}, f, indent=2)
+        except Exception as e:
+            print(f"Error saving state file: {e}")
 
     def _start_ws_client(self):
         """Runs an async loop inside a background thread to stay connected to chimes.py WS."""
@@ -663,12 +686,16 @@ class SyncedNarratorState:
             self.current_state["group_label"] = group_label
             self.current_state["wordlist"] = group_words
 
+            self._save_persisted_state()
+
         for word in group_words:
             details = self.get_word_details(word)
 
             with self.lock:
                 self.current_state["current_word"] = word
                 self.current_state["metadata"] = details
+
+                self._save_persisted_state()
 
             self._broadcast_phrase("Announcing Group List", words_announcement, "group_list")
             self._broadcast_phrase("Saying Word", f"Word: {word}.", "say_word")
@@ -800,8 +827,14 @@ def narration_worker():
         return
 
     visited = set()
-    # Pick a starting group (e.g., shortest stress pattern)
-    current_group = min(all_groups, key=lambda g: len(g["stress"]))
+
+    saved_label = narrator_state.current_state.get("group_label")
+    current_group = next((g for g in all_groups if g["label"] == saved_label), None)
+
+    if not current_group:
+        # Pick a starting group (e.g., shortest stress pattern)
+        #current_group = min(all_groups, key=lambda g: len(g["stress"]))
+        current_group = max(all_groups, key=lambda g: len(g["stress"]))
 
     while True:
         # 1. Priority Queue Handling (User manual search override)
