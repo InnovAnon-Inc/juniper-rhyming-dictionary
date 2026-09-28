@@ -1,34 +1,85 @@
 {
   "current_state": {
-    "group_label": "Stress 020010, Tail EY_SH_AH_N",
+    "group_label": "Stress 22010, Tail EY_SH_AH_N",
     "wordlist": [
-      "acidification",
-      "collectivization",
-      "commercialization",
-      "decentralization",
-      "demobilization",
-      "democratization",
-      "demoralization",
-      "detoxification",
-      "disorganization",
-      "disorientation",
-      "disqualification",
-      "diversification",
-      "electrification",
-      "experimentation",
-      "identification",
-      "intensification",
-      "misrepresentation",
-      "monopolization",
-      "personification",
-      "reclassification",
-      "reunification",
-      "saponification"
+      "acceleration",
+      "demodulation",
+      "exasperation",
+      "expropriation",
+      "hydrogenation",
+      "illumination",
+      "imagination",
+      "inactivation",
+      "incarceration",
+      "incorporation",
+      "incrimination",
+      "indoctrination",
+      "infatuation",
+      "initiation",
+      "inoculation",
+      "insemination",
+      "insinuation",
+      "interpretation",
+      "interrogation",
+      "intimidation",
+      "intoxication",
+      "invalidation",
+      "investigation",
+      "irradiation",
+      "predestination",
+      "prefabrication"
     ],
-    "current_word": "",
-    "step": "Idle",
-    "metadata": {},
-    "audio_file": null,
-    "audio_id": 0
+    "current_word": "incorporation",
+    "step": "Saying Word",
+    "metadata": {
+      "senses": [
+        {
+          "pos": "noun",
+          "definition": "consolidating two or more things; union in (or into) one body",
+          "example": null,
+          "synonyms": [],
+          "antonyms": [],
+          "hypernyms": [
+            "consolidation",
+            "integration"
+          ],
+          "hyponyms": []
+        },
+        {
+          "pos": "noun",
+          "definition": "learning (of values or attitudes etc.) that is incorporated within yourself",
+          "example": null,
+          "synonyms": [
+            "internalization",
+            "internalisation"
+          ],
+          "antonyms": [],
+          "hypernyms": [
+            "acquisition",
+            "learning"
+          ],
+          "hyponyms": [
+            "introjection"
+          ]
+        },
+        {
+          "pos": "noun",
+          "definition": "including by incorporating",
+          "example": null,
+          "synonyms": [],
+          "antonyms": [],
+          "hypernyms": [
+            "inclusion"
+          ],
+          "hyponyms": [
+            "annexation",
+            "appropriation"
+          ]
+        }
+      ],
+      "homophones": []
+    },
+    "audio_file": "say_word.wav",
+    "audio_id": 732
   }
 }

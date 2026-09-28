@@ -1,2 +1,5 @@
 temp_morse.wav
 audio_cache/
+llm_cache/
+narrator_state.json
+palindrome_cache/
