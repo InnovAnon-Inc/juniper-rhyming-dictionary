@@ -1,85 +1,212 @@
 {
   "current_state": {
-    "group_label": "Stress 22010, Tail EY_SH_AH_N",
+    "group_label": "Stress 20010, Tail EY_SH_AH_N",
     "wordlist": [
-      "acceleration",
-      "demodulation",
-      "exasperation",
-      "expropriation",
-      "hydrogenation",
-      "illumination",
-      "imagination",
-      "inactivation",
-      "incarceration",
-      "incorporation",
-      "incrimination",
-      "indoctrination",
-      "infatuation",
-      "initiation",
-      "inoculation",
-      "insemination",
-      "insinuation",
-      "interpretation",
-      "interrogation",
-      "intimidation",
-      "intoxication",
-      "invalidation",
-      "investigation",
-      "irradiation",
-      "predestination",
-      "prefabrication"
+      "alienation",
+      "amortization",
+      "amplification",
+      "argumentation",
+      "articulation",
+      "authorization",
+      "canonization",
+      "cauterization",
+      "centralization",
+      "certification",
+      "civilization",
+      "clarification",
+      "classification",
+      "codification",
+      "colonization",
+      "communization",
+      "deification",
+      "documentation",
+      "dramatization",
+      "edification",
+      "equalization",
+      "falsification",
+      "fertilization",
+      "fortification",
+      "gasification",
+      "glorification",
+      "gratification",
+      "harmonization",
+      "hybridization",
+      "immunization",
+      "impersonation",
+      "implementation",
+      "improvisation",
+      "ionization",
+      "justification",
+      "legalization",
+      "localization",
+      "magnetization",
+      "magnification",
+      "manifestation",
+      "maximization",
+      "mechanization",
+      "misinformation",
+      "mobilization",
+      "modernization",
+      "modification",
+      "multiplication",
+      "mummification",
+      "neutralization",
+      "normalization",
+      "notification",
+      "nullification",
+      "organization",
+      "orientation",
+      "ornamentation",
+      "ossification",
+      "pacification",
+      "pasteurization",
+      "polarization",
+      "proliferation",
+      "purification",
+      "qualification",
+      "quantification",
+      "ramification",
+      "ratification",
+      "reaffirmation",
+      "recommendation",
+      "rectification",
+      "reforestation",
+      "regimentation",
+      "reincarnation",
+      "representation",
+      "sanctification",
+      "sedimentation",
+      "simplification",
+      "socialization",
+      "specialization",
+      "specification",
+      "stabilization",
+      "sterilization",
+      "stratification",
+      "subsidization",
+      "synchronization",
+      "unification",
+      "unionization",
+      "urbanization",
+      "utilization",
+      "verification",
+      "victimization",
+      "vilification",
+      "visualization",
+      "vulgarization",
+      "westernization"
     ],
-    "current_word": "incorporation",
+    "current_word": "articulation",
     "step": "Saying Word",
     "metadata": {
       "senses": [
         {
           "pos": "noun",
-          "definition": "consolidating two or more things; union in (or into) one body",
+          "definition": "the aspect of pronunciation that involves bringing articulatory organs together so as to shape the sounds of speech",
           "example": null,
           "synonyms": [],
           "antonyms": [],
           "hypernyms": [
-            "consolidation",
-            "integration"
+            "pronunciation"
+          ],
+          "hyponyms": [
+            "syncope",
+            "retroflexion",
+            "nasalisation",
+            "diction",
+            "aspiration",
+            "thickness",
+            "retroflection",
+            "enunciation",
+            "trill",
+            "affrication",
+            "nasalization",
+            "syncopation",
+            "epenthesis",
+            "sandhi"
+          ]
+        },
+        {
+          "pos": "noun",
+          "definition": "the shape or manner in which things come together and a connection is made",
+          "example": null,
+          "synonyms": [
+            "join",
+            "juncture",
+            "joint",
+            "junction"
+          ],
+          "antonyms": [],
+          "hypernyms": [
+            "link",
+            "connexion",
+            "connection"
+          ],
+          "hyponyms": [
+            "esophagogastric junction",
+            "oesophagogastric junction"
+          ]
+        },
+        {
+          "pos": "noun",
+          "definition": "expressing in coherent verbal form",
+          "example": "the articulation of my feelings",
+          "synonyms": [
+            "voice"
+          ],
+          "antonyms": [],
+          "hypernyms": [
+            "expression",
+            "verbalism",
+            "verbal expression"
           ],
           "hyponyms": []
         },
         {
           "pos": "noun",
-          "definition": "learning (of values or attitudes etc.) that is incorporated within yourself",
-          "example": null,
+          "definition": "(anatomy) the point of connection between two bones or elements of a skeleton (especially if it allows motion)",
+          "example": "the articulation of my feelings",
           "synonyms": [
-            "internalization",
-            "internalisation"
+            "joint",
+            "articulatio"
           ],
           "antonyms": [],
           "hypernyms": [
-            "acquisition",
-            "learning"
+            "body part"
           ],
           "hyponyms": [
-            "introjection"
+            "stifle",
+            "articulatio synovialis",
+            "suture",
+            "hock",
+            "diarthrosis",
+            "fetlock joint",
+            "knee",
+            "fibrous joint",
+            "hock-joint",
+            "fetlock",
+            "synovial joint",
+            "elbow",
+            "sutura"
           ]
         },
         {
           "pos": "noun",
-          "definition": "including by incorporating",
-          "example": null,
+          "definition": "the act of joining things in such a way that motion is possible",
+          "example": "the articulation of my feelings",
           "synonyms": [],
           "antonyms": [],
           "hypernyms": [
-            "inclusion"
+            "connexion",
+            "joining",
+            "connection"
           ],
-          "hyponyms": [
-            "annexation",
-            "appropriation"
-          ]
+          "hyponyms": []
         }
       ],
       "homophones": []
     },
     "audio_file": "say_word.wav",
-    "audio_id": 732
+    "audio_id": 697
   }
 }

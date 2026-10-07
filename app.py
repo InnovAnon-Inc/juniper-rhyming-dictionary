@@ -1146,10 +1146,12 @@ class SyncedNarratorState:
                     self._broadcast_phrase("Saying Pseudo-palindrome", f"{cached_palindrome}", "say_palindrome")
 
                 if sense['pos']:
-                    self._broadcast_phrase("Part of Speech", f"Part of speech: {sense['pos']}.", f"pos_{idx}")
+                    #self._broadcast_phrase("Part of Speech", f"Part of speech: {sense['pos']}.", f"pos_{idx}")
+                    self._broadcast_phrase("Part of Speech", f"{sense['pos']}", f"pos_{idx}")
 
                 if sense['definition']:
-                    self._broadcast_phrase("Definition", f"Definition: {sense['definition']}", f"def_{idx}")
+                    #self._broadcast_phrase("Definition", f"Definition: {sense['definition']}", f"def_{idx}")
+                    self._broadcast_phrase("Definition", f"{sense['definition']}", f"def_{idx}")
 
                 if sense['example']: # TODO multiple examples
                     self._broadcast_phrase("Example Sentence", f"Example: {sense['example']}", f"example_{idx}")
