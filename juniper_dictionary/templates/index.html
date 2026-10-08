@@ -5,20 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Juniper Rhyming Dictionary</title>
     <style>
-        :root { --bg-color: #0f172a; --card-bg: #1e293b; --accent-color: #38bdf8; --text-main: #f8fafc; --text-muted: #94a3b8; --border-color: #334155; --highlight: #f59e0b; }
+        :root { 
+            --bg-color: #0f172a; 
+            --card-bg: #1e293b; 
+            --accent-color: #38bdf8; 
+            --text-main: #f8fafc; 
+            --text-muted: #94a3b8; 
+            --border-color: #334155; 
+            --highlight: #f59e0b; 
+            --foot-badge: #a855f7;
+            --rel-badge: #334155;
+        }
         body { font-family: system-ui, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 2rem; display: flex; justify-content: center; }
-        .container { max-width: 900px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+        .container { max-width: 960px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
         header { text-align: center; border-bottom: 2px solid var(--border-color); padding-bottom: 1rem; }
         h1 { margin: 0; color: var(--accent-color); font-size: 2.2rem; letter-spacing: 1px; }
         .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 0.4rem; }
         .hero-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 2rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
         .word-display { font-size: 3.5rem; font-weight: 800; color: var(--accent-color); margin: 0; text-transform: lowercase; letter-spacing: 2px; }
         .phonetics { font-family: monospace; font-size: 1.2rem; color: var(--highlight); margin-top: 0.5rem; }
+        .wordlist-box { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem; margin-top: 1rem; }
+        .wordlist-pill { background-color: rgba(56, 189, 248, 0.1); border: 1px solid var(--accent-color); color: var(--accent-color); padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600; }
+        .wordlist-pill.active { background-color: var(--accent-color); color: #0f172a; }
+        
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; }
         .card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.2rem; }
+        .card.hidden { display: none; }
         .card h3 { margin-top: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
         .card p { margin: 0.5rem 0 0 0; font-size: 1.05rem; line-height: 1.4; }
+        
         .tag { display: inline-block; background-color: #0284c7; color: #fff; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+        .foot-tag { background-color: var(--foot-badge); }
+        .rel-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+        .rel-pill { background-color: var(--rel-badge); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        
         .status-badge { display: inline-block; background: var(--highlight); color: #000; font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 4px; margin-bottom: 10px; text-transform: uppercase; }
         button { background-color: var(--accent-color); color: #0f172a; border: none; padding: 0.6rem 1.4rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: background 0.2s; margin-top: 1rem; }
         button:hover { background-color: #7dd3fc; }
@@ -37,11 +57,12 @@
             <div class="word-display" id="wordDisplay">loading...</div>
             <div class="phonetics" id="pronunciationDisplay">/ ... /</div>
             <p id="groupLabelDisplay" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 15px;"></p>
+            <div class="wordlist-box" id="wordlistBox"></div>
         </section>
 
         <section class="grid">
             <div class="card">
-                <h3>Stress Pattern</h3>
+                <h3>Stress Pattern & Metrical Foot</h3>
                 <p id="stressDisplay"><span class="tag">-</span></p>
             </div>
             <div class="card">
@@ -65,10 +86,55 @@
                 <p id="chimesDisplay">Mode: - | Chord: -</p>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;" id="solfegeDisplay">Solfège: -</p>
             </div>
+
+            <!-- WordNet Semantic Relations -->
+            <div class="card" id="synonymsCard">
+                <h3>Synonyms</h3>
+                <div class="rel-list" id="synonymsDisplay">-</div>
+            </div>
+            <div class="card" id="antonymsCard">
+                <h3>Antonyms</h3>
+                <div class="rel-list" id="antonymsDisplay">-</div>
+            </div>
+            <div class="card" id="hypernymsCard">
+                <h3>Hypernyms</h3>
+                <div class="rel-list" id="hypernymsDisplay">-</div>
+            </div>
+            <div class="card" id="hyponymsCard">
+                <h3>Hyponyms</h3>
+                <div class="rel-list" id="hyponymsDisplay">-</div>
+            </div>
         </section>
     </div>
 
     <script>
+        const METRICAL_FEET = {
+            "01": "Iamb", "10": "Trochee", "11": "Spondee", "00": "Pyrrhic",
+            "100": "Dactyl", "001": "Anapest", "010": "Amphibrach", "101": "Amphimacer",
+            "110": "Antibacchius", "011": "Bacchius", "111": "Molossus", "000": "Tribrach",
+            "1000": "Primus Paeon", "0100": "Secundus Paeon", "0010": "Tertius Paeon", "0001": "Quartus Paeon",
+            "1100": "Major Ionic", "0011": "Minor Ionic", "1001": "Choriamb", "0110": "Antispast",
+            "1010": "Ditrochee", "0101": "Diiamb"
+        };
+
+        function getMetricalFoot(stress) {
+            if (!stress) return null;
+            const normalized = stress.replace(/[^01]/g, '');
+            return METRICAL_FEET[normalized] || null;
+        }
+
+        function renderRelationPills(cardId, displayId, items) {
+            const cardEl = document.getElementById(cardId);
+            const displayEl = document.getElementById(displayId);
+            
+            if (items && items.length > 0) {
+                cardEl.classList.remove('hidden');
+                displayEl.innerHTML = items.map(item => `<span class="rel-pill">${item}</span>`).join('');
+            } else {
+                cardEl.classList.add('hidden');
+            }
+        }
+
         let audioAllowed = false;
         let lastAudioId = -1;
         const player = new Audio();
@@ -84,10 +150,31 @@
             document.getElementById('stepBadge').innerText = data.step || 'Idle';
             document.getElementById('groupLabelDisplay').innerText = data.group_label || '';
             document.getElementById('wordDisplay').innerText = data.current_word || '-';
+
+            // Active Group Word List
+            const wordlistBox = document.getElementById('wordlistBox');
+            const wordlist = data.wordlist || [];
+            if (wordlist.length > 0) {
+                wordlistBox.innerHTML = wordlist.map(w => {
+                    const isActive = w.toLowerCase() === (data.current_word || '').toLowerCase();
+                    return `<span class="wordlist-pill ${isActive ? 'active' : ''}">${w}</span>`;
+                }).join('');
+            } else {
+                wordlistBox.innerHTML = '';
+            }
             
             const meta = data.metadata || {};
             document.getElementById('pronunciationDisplay').innerText = `/ ${meta.pronunciation || ''} /`;
-            document.getElementById('stressDisplay').innerHTML = `<span class="tag">${meta.stress_pattern || '-'}</span>`;
+            
+            // Stress & Metrical Foot
+            const stress = meta.stress_pattern || '';
+            const footName = getMetricalFoot(stress);
+            let stressHtml = stress ? `<span class="tag">${stress}</span>` : '<span class="tag">-</span>';
+            if (footName) {
+                stressHtml += ` <span class="tag foot-tag">${footName}</span>`;
+            }
+            document.getElementById('stressDisplay').innerHTML = stressHtml;
+
             document.getElementById('rhymeTailDisplay').innerHTML = `<span class="tag">${meta.rhyme_tail || '-'}</span>`;
             
             const senseOne = (meta.senses && meta.senses.length > 0) ? meta.senses[0] : {};
@@ -95,13 +182,20 @@
             document.getElementById('exampleDisplay').innerText = senseOne.example || 'No example available.';
             document.getElementById('palindromeDisplay').innerText = meta.palindrome || 'No pseudo-palindrome available.';
 
+            // Render Semantic Relations
+            renderRelationPills('synonymsCard', 'synonymsDisplay', senseOne.synonyms);
+            renderRelationPills('antonymsCard', 'antonymsDisplay', senseOne.antonyms);
+            renderRelationPills('hypernymsCard', 'hypernymsDisplay', senseOne.hypernyms);
+            renderRelationPills('hyponymsCard', 'hyponymsDisplay', senseOne.hyponyms);
+
+            // Chimes State
             if (data.chimes && data.chimes.left_hand) {
                 const lh = data.chimes.left_hand;
                 document.getElementById('chimesDisplay').innerText = `${data.chimes.edo_system || '31-EDO'} | ${lh.key || '-'} ${lh.mode || '-'} | ${lh.chord_name || '-'}`;
                 document.getElementById('solfegeDisplay').innerText = `Solfège: ${(lh.solfege || []).join(' - ')}`;
             }
 
-            // Sync Audio Player with Server
+            // Sync Audio Player
             if (audioAllowed && data.audio_file && data.audio_id !== lastAudioId) {
                 lastAudioId = data.audio_id;
                 player.src = `/audio/${data.audio_file}?t=${Date.now()}`;

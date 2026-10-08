@@ -49,8 +49,16 @@ METRICAL_FEET = {
     "1010": "Ditrochee", "0101": "Diiamb"
 }
 
+#def identify_metrical_foot(stress_pattern):
+#    normalized = "".join(['1' if c == '1' else '0' for c in stress_pattern])
+#    return METRICAL_FEET.get(normalized, None)
 def identify_metrical_foot(stress_pattern):
-    normalized = "".join(['1' if c == '1' else '0' for c in stress_pattern])
+    if not stress_pattern:
+        return None
+    # Map primary ('1') and secondary ('2') stress to '1'; keep '0' as unstressed
+    normalized = "".join(
+        ['1' if c in ('1', '2') else '0' for c in stress_pattern if c in ('0', '1', '2')]
+    )
     return METRICAL_FEET.get(normalized, None)
 
 # ==========================================
