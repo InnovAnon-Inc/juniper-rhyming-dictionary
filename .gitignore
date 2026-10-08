@@ -1,3 +1,9 @@
+*.egg-info/
+.pytest_cache/
+build/
+version.py
+__pycache__/
+*.so
 temp_morse.wav
 audio_cache/
 llm_cache/

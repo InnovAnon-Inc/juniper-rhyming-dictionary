@@ -1,0 +1,74 @@
+[build-system]
+requires = [
+    "Cython",
+    "setuptools>=61.0.0",
+    "setuptools-scm>=8.0",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "juniper_dictionary"
+dynamic = [
+    "dependencies",
+    "version",
+]
+description = "TODO description"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    { name = "InnovAnon, Inc." },
+]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+# Declare test requirements as an optional extra
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov",  # Optional: for test coverage reports
+]
+
+#[project.scripts]
+#lc = "juniper_lc.lc:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = [
+    ".",
+]
+exclude = [
+    "build*",
+    "dist*",
+    "tests*",
+    "logs*",
+    "__pycache__*",
+    ".models*",
+    ".*",
+]
+
+[tool.setuptools.package-data]
+"*" = [
+    "*.pyx",
+    "*.pyd",
+    "*.pxd",
+    "*.cpp",
+    "*.h",
+    "*.ico",
+    "*.html",
+]
+
+[tool.setuptools_scm]
+write_to = "version.py"
+
+# Configure pytest directly in pyproject.toml
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short"
