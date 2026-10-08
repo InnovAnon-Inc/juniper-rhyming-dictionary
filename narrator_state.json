@@ -1,205 +1,44 @@
 {
   "current_state": {
-    "group_label": "Stress 20010, Tail EY_SH_AH_N",
+    "group_label": "Stress 020010, Tail EY_SH_AH_N",
     "wordlist": [
-      "alienation",
-      "amortization",
-      "amplification",
-      "argumentation",
-      "articulation",
-      "authorization",
-      "canonization",
-      "cauterization",
-      "centralization",
-      "certification",
-      "civilization",
-      "clarification",
-      "classification",
-      "codification",
-      "colonization",
-      "communization",
-      "deification",
-      "documentation",
-      "dramatization",
-      "edification",
-      "equalization",
-      "falsification",
-      "fertilization",
-      "fortification",
-      "gasification",
-      "glorification",
-      "gratification",
-      "harmonization",
-      "hybridization",
-      "immunization",
-      "impersonation",
-      "implementation",
-      "improvisation",
-      "ionization",
-      "justification",
-      "legalization",
-      "localization",
-      "magnetization",
-      "magnification",
-      "manifestation",
-      "maximization",
-      "mechanization",
-      "misinformation",
-      "mobilization",
-      "modernization",
-      "modification",
-      "multiplication",
-      "mummification",
-      "neutralization",
-      "normalization",
-      "notification",
-      "nullification",
-      "organization",
-      "orientation",
-      "ornamentation",
-      "ossification",
-      "pacification",
-      "pasteurization",
-      "polarization",
-      "proliferation",
-      "purification",
-      "qualification",
-      "quantification",
-      "ramification",
-      "ratification",
-      "reaffirmation",
-      "recommendation",
-      "rectification",
-      "reforestation",
-      "regimentation",
-      "reincarnation",
-      "representation",
-      "sanctification",
-      "sedimentation",
-      "simplification",
-      "socialization",
-      "specialization",
-      "specification",
-      "stabilization",
-      "sterilization",
-      "stratification",
-      "subsidization",
-      "synchronization",
-      "unification",
-      "unionization",
-      "urbanization",
-      "utilization",
-      "verification",
-      "victimization",
-      "vilification",
-      "visualization",
-      "vulgarization",
-      "westernization"
+      "acidification",
+      "collectivization",
+      "commercialization",
+      "decentralization",
+      "demobilization",
+      "democratization",
+      "demoralization",
+      "detoxification",
+      "disorganization",
+      "disorientation",
+      "disqualification",
+      "diversification",
+      "electrification",
+      "experimentation",
+      "identification",
+      "intensification",
+      "misrepresentation",
+      "monopolization",
+      "personification",
+      "reclassification",
+      "reunification",
+      "saponification"
     ],
-    "current_word": "articulation",
+    "current_word": "monopolization",
     "step": "Saying Word",
     "metadata": {
       "senses": [
         {
           "pos": "noun",
-          "definition": "the aspect of pronunciation that involves bringing articulatory organs together so as to shape the sounds of speech",
-          "example": null,
-          "synonyms": [],
-          "antonyms": [],
-          "hypernyms": [
-            "pronunciation"
-          ],
-          "hyponyms": [
-            "syncope",
-            "retroflexion",
-            "nasalisation",
-            "diction",
-            "aspiration",
-            "thickness",
-            "retroflection",
-            "enunciation",
-            "trill",
-            "affrication",
-            "nasalization",
-            "syncopation",
-            "epenthesis",
-            "sandhi"
-          ]
-        },
-        {
-          "pos": "noun",
-          "definition": "the shape or manner in which things come together and a connection is made",
+          "definition": "domination (of a market or commodity) to the exclusion of others",
           "example": null,
           "synonyms": [
-            "join",
-            "juncture",
-            "joint",
-            "junction"
+            "monopolisation"
           ],
           "antonyms": [],
           "hypernyms": [
-            "link",
-            "connexion",
-            "connection"
-          ],
-          "hyponyms": [
-            "esophagogastric junction",
-            "oesophagogastric junction"
-          ]
-        },
-        {
-          "pos": "noun",
-          "definition": "expressing in coherent verbal form",
-          "example": "the articulation of my feelings",
-          "synonyms": [
-            "voice"
-          ],
-          "antonyms": [],
-          "hypernyms": [
-            "expression",
-            "verbalism",
-            "verbal expression"
-          ],
-          "hyponyms": []
-        },
-        {
-          "pos": "noun",
-          "definition": "(anatomy) the point of connection between two bones or elements of a skeleton (especially if it allows motion)",
-          "example": "the articulation of my feelings",
-          "synonyms": [
-            "joint",
-            "articulatio"
-          ],
-          "antonyms": [],
-          "hypernyms": [
-            "body part"
-          ],
-          "hyponyms": [
-            "stifle",
-            "articulatio synovialis",
-            "suture",
-            "hock",
-            "diarthrosis",
-            "fetlock joint",
-            "knee",
-            "fibrous joint",
-            "hock-joint",
-            "fetlock",
-            "synovial joint",
-            "elbow",
-            "sutura"
-          ]
-        },
-        {
-          "pos": "noun",
-          "definition": "the act of joining things in such a way that motion is possible",
-          "example": "the articulation of my feelings",
-          "synonyms": [],
-          "antonyms": [],
-          "hypernyms": [
-            "connexion",
-            "joining",
-            "connection"
+            "domination"
           ],
           "hyponyms": []
         }
@@ -207,6 +46,6 @@
       "homophones": []
     },
     "audio_file": "say_word.wav",
-    "audio_id": 697
+    "audio_id": 786
   }
 }
