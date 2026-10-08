@@ -3,323 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rhyming Dictionary</title>
+    <title>Juniper Rhyming Dictionary</title>
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --accent-color: #38bdf8;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --highlight: #f59e0b;
-        }
-
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 800px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .header {
-            text-align: center;
-            border-bottom: 2px solid var(--card-bg);
-            padding-bottom: 15px;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 1.8rem;
-            color: var(--accent-color);
-        }
-
-        .audio-banner {
-            background: #0284c7;
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .search-box {
-            display: flex;
-            gap: 10px;
-        }
-
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #334155;
-            background: var(--card-bg);
-            color: var(--text-main);
-            font-size: 1rem;
-        }
-
-        button {
-            padding: 12px 20px;
-            border-radius: 8px;
-            border: none;
-            background: var(--accent-color);
-            color: #000;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .card {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
-        }
-
-        .status-badge {
-            display: inline-block;
-            background: var(--highlight);
-            color: #000;
-            font-size: 0.8rem;
-            font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        .word-title {
-            font-size: 3rem;
-            font-weight: 800;
-            margin: 5px 0;
-            color: var(--accent-color);
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .word-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .word-chip {
-            padding: 6px 12px;
-            background: #334155;
-            border-radius: 20px;
-            font-size: 0.9rem;
-        }
-
-        .word-chip.active {
-            background: var(--accent-color);
-            color: #000;
-            font-weight: bold;
-        }
-
-        .meta-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 12px;
-            margin-top: 15px;
-        }
-
-        .meta-item {
-            border-left: 3px solid var(--accent-color);
-            padding-left: 10px;
-        }
-
-        .meta-label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-        }
-
-        .meta-value {
-            font-size: 1.05rem;
-            margin-top: 2px;
-        }
+        :root { --bg-color: #0f172a; --card-bg: #1e293b; --accent-color: #38bdf8; --text-main: #f8fafc; --text-muted: #94a3b8; --border-color: #334155; --highlight: #f59e0b; }
+        body { font-family: system-ui, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 2rem; display: flex; justify-content: center; }
+        .container { max-width: 900px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+        header { text-align: center; border-bottom: 2px solid var(--border-color); padding-bottom: 1rem; }
+        h1 { margin: 0; color: var(--accent-color); font-size: 2.2rem; letter-spacing: 1px; }
+        .subtitle { color: var(--text-muted); font-size: 0.95rem; margin-top: 0.4rem; }
+        .hero-card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 2rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+        .word-display { font-size: 3.5rem; font-weight: 800; color: var(--accent-color); margin: 0; text-transform: lowercase; letter-spacing: 2px; }
+        .phonetics { font-family: monospace; font-size: 1.2rem; color: var(--highlight); margin-top: 0.5rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; }
+        .card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.2rem; }
+        .card h3 { margin-top: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .card p { margin: 0.5rem 0 0 0; font-size: 1.05rem; line-height: 1.4; }
+        .tag { display: inline-block; background-color: #0284c7; color: #fff; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+        .status-badge { display: inline-block; background: var(--highlight); color: #000; font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 4px; margin-bottom: 10px; text-transform: uppercase; }
+        button { background-color: var(--accent-color); color: #0f172a; border: none; padding: 0.6rem 1.4rem; font-weight: 700; border-radius: 6px; cursor: pointer; transition: background 0.2s; margin-top: 1rem; }
+        button:hover { background-color: #7dd3fc; }
     </style>
 </head>
 <body>
+    <div class="container">
+        <header>
+            <h1>JUNIPER RHYMING DICTIONARY</h1>
+            <div class="subtitle">31-EDO Sync • 125ms Grid / 60 BPM Master Clock • Structural Audio Narration</div>
+            <button id="enableAudio">Tap to Enable Live Audio Stream</button>
+        </header>
 
-<div class="container">
-    <div class="header">
-        <h1>Centralized Audio Narrator</h1>
-        <p style="color: var(--text-muted); margin: 5px 0 0 0;">Synchronized live phonics & dictionary feed</p>
+        <section class="hero-card">
+            <div id="stepBadge" class="status-badge">Syncing...</div>
+            <div class="word-display" id="wordDisplay">loading...</div>
+            <div class="phonetics" id="pronunciationDisplay">/ ... /</div>
+            <p id="groupLabelDisplay" style="color: var(--text-muted); font-size: 0.9rem; margin-top: 15px;"></p>
+        </section>
+
+        <section class="grid">
+            <div class="card">
+                <h3>Stress Pattern</h3>
+                <p id="stressDisplay"><span class="tag">-</span></p>
+            </div>
+            <div class="card">
+                <h3>Rhyme Tail</h3>
+                <p id="rhymeTailDisplay"><span class="tag">-</span></p>
+            </div>
+            <div class="card">
+                <h3>Definition (Sense 1)</h3>
+                <p id="definitionDisplay">Loading definition...</p>
+            </div>
+            <div class="card">
+                <h3>LLM Usage Example</h3>
+                <p id="exampleDisplay">Loading example...</p>
+            </div>
+            <div class="card">
+                <h3>Pseudo-Palindrome</h3>
+                <p id="palindromeDisplay">Loading pseudo-palindrome...</p>
+            </div>
+            <div class="card">
+                <h3>31-EDO Chimes State</h3>
+                <p id="chimesDisplay">Mode: - | Chord: -</p>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;" id="solfegeDisplay">Solfège: -</p>
+            </div>
+        </section>
     </div>
 
-    <!-- Mobile Audio Unlock Banner -->
-    <div id="audio-enable-btn" class="audio-banner">
-        🔊 Tap here to Enable Synchronized Mobile Audio
-    </div>
+    <script>
+        let audioAllowed = false;
+        let lastAudioId = -1;
+        const player = new Audio();
 
-    <!-- Search Form -->
-    <div class="card">
-        <form id="search-form" class="search-box">
-            <input type="text" id="word-input" placeholder="Enter a word to jump to its rhyme group..." required>
-            <button type="submit">Jump to Word</button>
-        </form>
-        <div id="feedback" style="font-size: 0.9rem; margin-top: 5px;"></div>
-    </div>
+        document.getElementById('enableAudio').addEventListener('click', () => {
+            audioAllowed = true;
+            player.play().catch(() => {});
+            document.getElementById('enableAudio').innerText = "Live Audio Connected ✓";
+            document.getElementById('enableAudio').style.backgroundColor = "#22c55e";
+        });
 
-    <!-- Live Status Card -->
-    <div class="card">
-        <div id="step-badge" class="status-badge">Syncing...</div>
-        <div id="group-label" style="color: var(--text-muted); font-size: 0.9rem;"></div>
-        
-        <div id="current-word" class="word-title">---</div>
-
-        <div class="meta-label">Current Group Wordlist</div>
-        <div id="wordlist" class="word-list"></div>
-    </div>
-
-    <!-- Detailed Metadata Card -->
-    <div class="card">
-        <h3 style="margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 8px;">Word Metadata</h3>
-        
-        <div class="meta-grid">
-            <div class="meta-item">
-                <div class="meta-label">Part of Speech</div>
-                <div id="meta-pos" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Definition</div>
-                <div id="meta-def" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Example Sentence</div>
-                <div id="meta-example" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Synonyms</div>
-                <div id="meta-synonyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Antonyms</div>
-                <div id="meta-antonyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Homophones</div>
-                <div id="meta-homophones" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Broader Categories (Hypernyms)</div>
-                <div id="meta-hypernyms" class="meta-value">-</div>
-            </div>
-            <div class="meta-item">
-                <div class="meta-label">Specific Kinds (Hyponyms)</div>
-                <div id="meta-hyponyms" class="meta-value">-</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    let audioAllowed = false;
-    let lastAudioId = -1;
-    let isPlaying = false;
-    const player = new Audio();
-
-    player.addEventListener('ended', () => {
-        isPlaying = false;
-    });
-
-    // Tap to unblock mobile browser audio permissions
-    document.getElementById('audio-enable-btn').addEventListener('click', () => {
-        audioAllowed = true;
-        player.play().catch(() => {});
-        document.getElementById('audio-enable-btn').style.display = 'none';
-    });
-
-    async function updateState() {
-        try {
-            const res = await fetch('/api/state');
-            const data = await res.json();
-
-            document.getElementById('step-badge').innerText = data.step || 'Idle';
-            document.getElementById('group-label').innerText = data.group_label || '';
-            document.getElementById('current-word').innerText = data.current_word || '---';
-
-            // Wordlist chips
-            const listContainer = document.getElementById('wordlist');
-            listContainer.innerHTML = '';
-            (data.wordlist || []).forEach(w => {
-                const chip = document.createElement('span');
-                chip.className = 'word-chip' + (w === data.current_word ? ' active' : '');
-                chip.innerText = w;
-                listContainer.appendChild(chip);
-            });
-
-            // Metadata fields
+        function updateUI(data) {
+            document.getElementById('stepBadge').innerText = data.step || 'Idle';
+            document.getElementById('groupLabelDisplay').innerText = data.group_label || '';
+            document.getElementById('wordDisplay').innerText = data.current_word || '-';
+            
             const meta = data.metadata || {};
-            document.getElementById('meta-pos').innerText = meta.pos || '-';
-            document.getElementById('meta-def').innerText = meta.definition || '-';
-            document.getElementById('meta-example').innerText = meta.example || '-';
-            document.getElementById('meta-synonyms').innerText = (meta.synonyms || []).join(', ') || 'None';
-            document.getElementById('meta-antonyms').innerText = (meta.antonyms || []).join(', ') || 'None';
-            document.getElementById('meta-homophones').innerText = (meta.homophones || []).join(', ') || 'None';
-            document.getElementById('meta-hypernyms').innerText = (meta.hypernyms || []).join(', ') || 'None';
-            document.getElementById('meta-hyponyms').innerText = (meta.hyponyms || []).join(', ') || 'None';
+            document.getElementById('pronunciationDisplay').innerText = `/ ${meta.pronunciation || ''} /`;
+            document.getElementById('stressDisplay').innerHTML = `<span class="tag">${meta.stress_pattern || '-'}</span>`;
+            document.getElementById('rhymeTailDisplay').innerHTML = `<span class="tag">${meta.rhyme_tail || '-'}</span>`;
+            
+            const senseOne = (meta.senses && meta.senses.length > 0) ? meta.senses[0] : {};
+            document.getElementById('definitionDisplay').innerText = senseOne.definition || 'No definition available.';
+            document.getElementById('exampleDisplay').innerText = senseOne.example || 'No example available.';
+            document.getElementById('palindromeDisplay').innerText = meta.palindrome || 'No pseudo-palindrome available.';
 
-            // Play audio if a new ID is received
+            if (data.chimes && data.chimes.left_hand) {
+                const lh = data.chimes.left_hand;
+                document.getElementById('chimesDisplay').innerText = `${data.chimes.edo_system || '31-EDO'} | ${lh.key || '-'} ${lh.mode || '-'} | ${lh.chord_name || '-'}`;
+                document.getElementById('solfegeDisplay').innerText = `Solfège: ${(lh.solfege || []).join(' - ')}`;
+            }
+
+            // Sync Audio Player with Server
             if (audioAllowed && data.audio_file && data.audio_id !== lastAudioId) {
                 lastAudioId = data.audio_id;
-                isPlaying = true;
                 player.src = `/audio/${data.audio_file}?t=${Date.now()}`;
                 player.play().catch(e => console.log('Playback blocked:', e));
             }
-
-        } catch (err) {
-            console.error('Sync error:', err);
         }
-    }
 
-    setInterval(updateState, 300);
-    updateState();
+        const eventSource = new EventSource('/api/stream');
+        eventSource.onmessage = (event) => {
+            try { updateUI(JSON.parse(event.data)); } 
+            catch (err) { console.error("SSE parse error:", err); }
+        };
 
-    // Form submission
-    document.getElementById('search-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const input = document.getElementById('word-input');
-        const feedback = document.getElementById('feedback');
-        const word = input.value.trim();
-
-        if (!word) return;
-
-        try {
-            const res = await fetch('/api/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ word: word })
-            });
-            const data = await res.json();
-
-            if (res.ok) {
-                feedback.style.color = '#34d399';
-                feedback.innerText = data.message;
-                input.value = '';
-            } else {
-                feedback.style.color = '#f87171';
-                feedback.innerText = data.message;
-            }
-        } catch (err) {
-            feedback.style.color = '#f87171';
-            feedback.innerText = 'Server error occurred.';
-        }
-    });
-</script>
-
+        fetch('/api/state')
+            .then(res => res.json())
+            .then(data => updateUI(data))
+            .catch(err => console.error("Init Fetch Error:", err));
+    </script>
 </body>
 </html>
-

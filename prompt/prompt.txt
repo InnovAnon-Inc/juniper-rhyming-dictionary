@@ -1,0 +1,9 @@
+```
+                31-EDO Chimes State
+
+                Mode: - | Chord: -
+
+                Solfège: -
+```
+
+I think we're failing to sync with the chimes server? or maybe we're just not displaying it?

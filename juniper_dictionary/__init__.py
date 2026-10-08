@@ -1,2 +1,2 @@
-from .app        import *
+#from .app        import *
 from .dictionary import *
