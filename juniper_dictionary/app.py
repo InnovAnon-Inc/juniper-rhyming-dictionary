@@ -3,7 +3,7 @@ import time
 import json
 import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
-from juniper_dictionary.dictionary import UnifiedPhonicsEngine, SyncedNarratorState, narration_worker, CACHE_DIR
+from .dictionary import UnifiedPhonicsEngine, SyncedNarratorState, narration_worker, CACHE_DIR
 
 app = Flask(__name__)
 
