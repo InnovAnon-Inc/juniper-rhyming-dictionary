@@ -283,6 +283,47 @@ class SyncedNarratorState:
             sleep_to_next_tick += 0.125
         time.sleep(sleep_to_next_tick)
 
+#    def get_word_details(self, word):
+#        synsets = safe_wordnet_synsets(word)
+#        homophones = self.phonics_engine.get_homophones(word)
+#        profile = self.phonics_engine.word_profiles.get(word, {})
+#
+#        ex_data = fetch_microservice_json(f"http://127.0.0.1:5018/example/{word}")
+#        pal_data = fetch_microservice_json(f"http://127.0.0.1:5010/api/palindrome/{word}")
+#
+#        example = ex_data.get("example")
+#        palindrome = pal_data.get("palindrome")
+#
+#        senses = []
+#        for syn in synsets:
+##            senses.append({
+##                "pos": syn.pos(),
+##                "definition": syn.definition(),
+##                "example": example or (syn.examples()[0] if syn.examples() else None),
+##                "synonyms": [l.name().replace('_', ' ') for l in syn.lemmas() if l.name().lower() != word],
+##                "antonyms": [a.name().replace('_', ' ') for l in syn.lemmas() for a in l.antonyms()]
+##            })
+#            senses.append({
+#    "pos": syn.pos(),
+#    "definition": syn.definition(),
+#    "example": example or (syn.examples()[0] if syn.examples() else None),
+#    "synonyms": list(set(l.name().replace('_', ' ') for l in syn.lemmas() if l.name().lower() != word)),
+#    "antonyms": list(set(a.name().replace('_', ' ') for l in syn.lemmas() for a in l.antonyms())),
+#    "hyponyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hyponyms())),
+#    "hypernyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hypernyms()))
+#})
+#
+#        if not senses:
+#            senses = [{"pos": None, "definition": None, "example": example, "synonyms": [], "antonyms": []}]
+#
+#        return {
+#            "senses": senses,
+#            "homophones": homophones,
+#            "palindrome": palindrome,
+#            "pronunciation": profile.get("raw_pronunciation", ""),
+#            "stress_pattern": profile.get("stress", ""),
+#            "rhyme_tail": profile.get("rhyme_tail", "")
+#        }
     def get_word_details(self, word):
         synsets = safe_wordnet_synsets(word)
         homophones = self.phonics_engine.get_homophones(word)
@@ -292,34 +333,42 @@ class SyncedNarratorState:
         pal_data = fetch_microservice_json(f"http://127.0.0.1:5010/api/palindrome/{word}")
 
         example = ex_data.get("example")
-        palindrome = pal_data.get("palindrome")
+        pal_raw = pal_data.get("palindrome")
+
+        palindrome = None
+        palindromes_list = []
+        
+        # Safely parse whether the microservice returned a JSON list or legacy string
+        if isinstance(pal_raw, list):
+            palindromes_list = pal_raw
+            if palindromes_list:
+                # Pick a random palindrome for the active broadcast stream
+                chosen = random.choice(palindromes_list)
+                palindrome = chosen.get("phrase") if isinstance(chosen, dict) else str(chosen)
+        elif isinstance(pal_raw, str):
+            palindrome = pal_raw
+            palindromes_list = [{"phrase": pal_raw, "fudge": 0.0}]
 
         senses = []
         for syn in synsets:
-#            senses.append({
-#                "pos": syn.pos(),
-#                "definition": syn.definition(),
-#                "example": example or (syn.examples()[0] if syn.examples() else None),
-#                "synonyms": [l.name().replace('_', ' ') for l in syn.lemmas() if l.name().lower() != word],
-#                "antonyms": [a.name().replace('_', ' ') for l in syn.lemmas() for a in l.antonyms()]
-#            })
             senses.append({
-    "pos": syn.pos(),
-    "definition": syn.definition(),
-    "example": example or (syn.examples()[0] if syn.examples() else None),
-    "synonyms": list(set(l.name().replace('_', ' ') for l in syn.lemmas() if l.name().lower() != word)),
-    "antonyms": list(set(a.name().replace('_', ' ') for l in syn.lemmas() for a in l.antonyms())),
-    "hyponyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hyponyms())),
-    "hypernyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hypernyms()))
-})
+                "pos": syn.pos(),
+                "definition": syn.definition(),
+                "example": example or (syn.examples()[0] if syn.examples() else None),
+                "synonyms": list(set(l.name().replace('_', ' ') for l in syn.lemmas() if l.name().lower() != word)),
+                "antonyms": list(set(a.name().replace('_', ' ') for l in syn.lemmas() for a in l.antonyms())),
+                "hyponyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hyponyms())),
+                "hypernyms": list(set(h.name().split('.')[0].replace('_', ' ') for h in syn.hypernyms()))
+            })
 
         if not senses:
-            senses = [{"pos": None, "definition": None, "example": example, "synonyms": [], "antonyms": []}]
+            senses = [{"pos": None, "definition": None, "example": example, "synonyms": [], "antonyms": [], "hyponyms": [], "hypernyms": []}]
 
         return {
             "senses": senses,
             "homophones": homophones,
-            "palindrome": palindrome,
+            "palindrome": palindrome,         # Randomly selected single string for TTS/UI narration
+            "palindromes": palindromes_list,   # Full list of JSON objects if you want to grab all of them
             "pronunciation": profile.get("raw_pronunciation", ""),
             "stress_pattern": profile.get("stress", ""),
             "rhyme_tail": profile.get("rhyme_tail", "")

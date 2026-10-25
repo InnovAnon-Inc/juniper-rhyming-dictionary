@@ -5,4 +5,5 @@ set -euxo nounset -o pipefail
 [[ -n ${VIRTUAL_ENV:-} ]] ||
 . ~/venv/bin/activate
 #python app-v2.py
+pip install .
 python -m juniper_dictionary.app
